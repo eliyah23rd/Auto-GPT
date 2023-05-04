@@ -295,6 +295,17 @@ class Agent:
                 logger.typewriter_log(
                     "SYSTEM: ", Fore.YELLOW, "Unable to execute command"
                 )
+            # For now we perform this check AFTER the action has been taken, it may be too
+            # late for this time but if there was a violation, it will appear in the message
+            # history
+            self.ai_guidelines.exec_monitor(
+                    self.system_prompt,
+                    self.full_message_history,
+                    self.memory,
+                    cfg.fast_token_limit,
+                    cfg.fast_llm_model,
+            )
+ 
 
     def _resolve_pathlike_command_args(self, command_args):
         if "directory" in command_args and command_args["directory"] in {"", "/"}:
