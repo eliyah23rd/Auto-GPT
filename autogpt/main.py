@@ -21,6 +21,8 @@ from autogpt.utils import (
 from autogpt.workspace import Workspace
 from scripts.install_plugin_deps import install_plugin_dependencies
 from autogpt.ai_guidelines import AIGuidelines
+from autogpt.agdai.__init__ import ClAGDAI
+# from autogpt.telegram_plugin.__init__ import AutoGPTTelegram
 
 
 def run_auto_gpt(
@@ -117,6 +119,8 @@ def run_auto_gpt(
     cfg.file_logger_path = str(file_logger_path)
 
     cfg.set_plugins(scan_plugins(cfg, cfg.debug_mode))
+    cfg.plugins.append(ClAGDAI())
+    # cfg.plugins.append(AutoGPTTelegram())
     guidelines_mgr = AIGuidelines(cfg.ai_guidelines_file)
 
     # Create a CommandRegistry instance and scan default folder
