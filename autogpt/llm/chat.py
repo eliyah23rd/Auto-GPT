@@ -119,7 +119,7 @@ def chat_with_ai(
                 [create_chat_message("user", user_input)], model
             )  # Account for user input (appended later)
 
-            current_tokens_used += 500  # Account for memory (appended later) TODO: The final memory may be less than 500 tokens
+            current_tokens_used += 800  # Account for memory (appended later) TODO: The final memory may be less than 500 tokens
 
             # Add Messages until the token limit is reached or there are no more messages to add.
             while next_message_to_add_index >= 0:
@@ -146,6 +146,9 @@ def chat_with_ai(
 
                 # Move to the next most recent message in the full message history
                 next_message_to_add_index -= 1
+
+            current_tokens_used -= 500 # Remove 500 of the 800 allocated before adding history
+
             from autogpt.memory_management.summary_memory import (
                 get_newly_trimmed_messages,
                 update_running_summary,
@@ -190,10 +193,17 @@ def chat_with_ai(
                     )
                 )
                 logger.debug(system_message)
-                current_context.append(create_chat_message("system", system_message))
+                budget_msg = create_chat_message("system", system_message)
+                current_tokens_used += count_message_tokens([budget_msg], model)
+                current_context.append(budget_msg)
 
             # Append user input, the length of this is accounted for above
-            current_context.extend([create_chat_message("user", user_input)])
+            last_input_message = create_chat_message("user", user_input)
+            current_tokens_used += count_message_tokens([last_input_message], model)
+            current_context.append(last_input_message)
+
+
+            current_tokens_used -= 300 # Remove 300 of the 800 allocated before adding history. Count should be correct now
 
             plugin_count = len(cfg.plugins)
             for i, plugin in enumerate(cfg.plugins):
@@ -212,6 +222,8 @@ def chat_with_ai(
                     logger.debug("Plugins remaining at stop:", plugin_count - i)
                     break
                 current_context.append(create_chat_message("system", plugin_response))
+                current_tokens_used += tokens_to_add
+
 
             # Calculate remaining tokens
             tokens_remaining = token_limit - current_tokens_used

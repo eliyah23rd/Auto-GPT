@@ -3,16 +3,17 @@ from __future__ import annotations
 import os
 import dataclasses
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple, TypedDict, TypeVar
+from typing import Any, Dict, List, Tuple #  TypedDict, TypeVar, Optional
 
 import numpy as np
+import json
 import orjson
 
 from autogpt.llm import get_ada_embedding
-from autogpt.memory.base import MemoryProviderSingleton
+# from autogpt.memory.base import MemoryProviderSingleton
 
 EMBED_DIM = 1536
-SAVE_OPTIONS = orjson.OPT_SERIALIZE_NUMPY | orjson.OPT_SERIALIZE_DATACLASS
+SAVE_OPTIONS = orjson.OPT_SERIALIZE_NUMPY | orjson.OPT_SERIALIZE_DATACLASS # pylint: disable no-member
 
 
 def create_default_embeddings():
@@ -22,31 +23,33 @@ def create_default_embeddings():
 @dataclasses.dataclass
 class AgdaiCacheContent:
     texts: List[str] = dataclasses.field(default_factory=list)
-    agent_names: List[str] = dataclasses.field(default_factory=list)
-    memids: List[Tuple[int, int]] = dataclasses.field(default_factory=list)
-    refs: List[List[Tuple[int, int]]] = dataclasses.field(default_factory=list)
-    rev_refs: List[List[Tuple[int, int]]] = dataclasses.field(default_factory=list)
-    scores: List[float] = dataclasses.field(default_factory=list)
-    seq_starts: Dict[str, int] = dataclasses.field(default_factory=dict)
     embeddings: np.ndarray = dataclasses.field(
         default_factory=create_default_embeddings
     )
+    seq_starts: Dict[str, int] = dataclasses.field(default_factory=dict)
+    main_data_name: str = 'texts'
 
 
-class ClAgdaiMem:
-    """A class that stores the memory in a local file"""
+@dataclasses.dataclass
+class AgdaiCacheRefs:
+    refs: List[Tuple[Tuple[int, int], Tuple[int, int]]] = dataclasses.field(default_factory=list) # list of src->dest memids where each memid is (start, seqnum)
+    seq_starts: Dict[str, int] = dataclasses.field(default_factory=dict)
+    main_data_name: str = 'refs'
 
-    def __init__(self, utc_start) -> None:
-        """Initialize a class instance
 
-        Args:
-            cfg: Config object
+@dataclasses.dataclass
+class AgdaiCacheVals:
+    vals: List[Tuple[Tuple[int, int], Any]] = dataclasses.field(default_factory=list) # list of src -> int vals where each src is a memid (start, seqnum)
+    seq_starts: Dict[str, int] = dataclasses.field(default_factory=dict)
+    main_data_name: str = 'vals'
 
-        Returns:
-            None
-        """
+# def init_file(utc_start, memtype):
+
+class ClAgdaiStorage:
+    def __init__(self, utc_start, memtype, filename_body) -> None:
+        self._utc_start = str(utc_start)
         curr_dir = Path(__file__).parent
-        self.filename = curr_dir / 'memory.json'
+        self.filename = curr_dir / f'{filename_body}.json'
 
         self.filename.touch(exist_ok=True)
 
@@ -66,20 +69,157 @@ class ClAgdaiMem:
                     # to align with later use.
                     if 'embeddings' in loaded:
                         loaded['embeddings'] = np.array(loaded['embeddings'])
-                    self.data = AgdaiCacheContent(**loaded)
+                    self.data = memtype(**loaded)
             except orjson.JSONDecodeError:
                 print(f"Error: The file '{self.filename}' is not in JSON format.")
-                self.data = AgdaiCacheContent()
+                self.data = memtype()
+                # self._numrecs = 0
         else:
             file_content = b"{}"
             with self.filename.open("w+b") as f:
                 f.write(file_content)
 
-            self.data = AgdaiCacheContent()
+            self.data = memtype()
+            # self._numrecs = 0
 
-        self.data.seq_starts[str(utc_start)] = len(self.data.texts)
+        self.data.seq_starts[self._utc_start] = self.get_numrecs()
+        # self._numrecs = len(self.data[self.data.main_data_name])
 
-    def add(self, text: str, agent_name: str, memid: Tuple[int, int], refs: List[Tuple[int, int]], score):
+    # def _incr_numrecs(self):
+    #     # self._numrecs += 1
+    #     raise NotImplementedError('deprecated')
+
+    def save_data(self):
+        with open(self.filename, "wb") as f:
+            out = orjson.dumps(self.data, option=SAVE_OPTIONS)
+            f.write(out)
+
+    def get_last_memid(self):
+        return (self._utc_start, (self.get_numrecs() - 1) - self.data.seq_starts[self._utc_start])
+
+    def get_inseq_memids(self, n, start_back : int = 0):
+        _, num_inseq = self.get_last_memid()
+        range_lower = max(0, (num_inseq - n)+1)
+        range_upper = max(0, num_inseq + 1 - start_back)
+        return [(self._utc_start, i) for i in reversed(range(range_lower, range_upper))] # If the numbers were bigger, this should be a yield
+    
+    def get_numrecs(self):
+        raise NotImplementedError('Subclass must define the get_numrecs function')
+    
+    def _get_utc_prep(self):
+        lstarts = []; d_rev = {}
+        for utc, idx_start in self.data.seq_starts.items():
+            lstarts.append(idx_start)
+            d_rev[idx_start] = utc
+
+        return lstarts, d_rev
+
+    
+    def get_memids(self, idxs):
+        def highest_number_lte(lst, num):
+            return max([i for i in lst if i <= num])
+        lstarts, d_rev = self._get_utc_prep()
+        lret = []
+        for idx in idxs:
+            seq_start = highest_number_lte(lstarts, idx)
+            lret.append((d_rev[seq_start], idx - seq_start))
+        return lret
+
+
+class ClAgdaiVals(ClAgdaiStorage):
+    """A class that stores key,val pairs in a local json file"""
+
+    def __init__(self, utc_start, filename_body, val_type=None) -> None:
+        super().__init__(utc_start, AgdaiCacheVals, filename_body)
+        self.data.vals = [(tuple(key), tuple(val) if val_type == 'tuple' else val) for key, val in self.data.vals]
+        self._d_lkp = {val[0]:idx for idx, val in enumerate(self.data.vals)}
+        assert len(self._d_lkp) == self.get_numrecs(), 'Error, ClAgdaiVals may not include repeated key'
+
+    def add(self, mem_with_score: Tuple[Tuple[int, int], Any]):
+        """
+        Add a mapping of a memid to storage. e.g. memid for action to its utility function score
+
+        Args:
+            mem_with_score: the memid of a record and an attached score
+
+        Returns: None
+        """
+        key = mem_with_score[0]
+        assert self._d_lkp.get(key, None) is None, 'Error, ClAgdaiVals may not include repeated key'
+        self._d_lkp[key] = self.get_numrecs()
+        self.data.vals.append(mem_with_score)
+        # self._incr_numrecs()
+        self.save_data()
+
+    def get_val(self, memid) -> Any:
+        idx = self._d_lkp.get(memid, None)
+        if idx is None:
+            return None
+        lkp_memid, val = self.data.vals[idx]
+        assert lkp_memid == memid
+        return val
+    
+    def set_val(self, memid, new_val) -> None:
+        idx = self._d_lkp.get(memid, None)
+        assert idx is not None, 'Error! memid to set val for, not found in storage'
+        lkp_memid, _ = self.data.vals[idx]
+        assert lkp_memid == memid
+        self.data.vals[idx] = (memid, new_val)
+        self.save_data()
+
+    def get_numrecs(self):
+        return len(self.data.vals)
+
+
+class ClAgdaiRefs(ClAgdaiStorage):
+    """A class that stores ref pairs in a local json file"""
+
+    def __init__(self, utc_start, filename_body) -> None:
+        super().__init__(utc_start, AgdaiCacheRefs, filename_body)
+
+    def add(self, ref_pair: Tuple[Tuple[int, int], Tuple[int, int]]):
+        """
+        Add a pair of memids to storage
+
+        Args:
+            ref_pair: a pair of memids from two separate storage files
+
+        Returns: None
+        """
+        self.data.refs.append(ref_pair)
+        # self._incr_numrecs()
+        self.save_data()
+
+    def get_ref_pairs(self, n):
+        return [self.data.get_pair_ref(memid) for memid in self.get_inseq_memids(n)]
+
+    def get_pair_ref(self, memid) -> Tuple[Tuple[int, int], Tuple[int, int]]:
+        utc, seqnum = memid
+        idx = self.data.seq_starts[utc] + seqnum
+        return self.data.refs[idx]
+
+    def get_numrecs(self):
+        return len(self.data.refs)
+
+
+class ClAgdaiMem(ClAgdaiStorage):
+    """A class that stores text plus embeddings in a local json file"""
+
+    def __init__(self, utc_start, filename_body) -> None:
+        """Initialize a class instance
+
+        Args:
+            utc_start: utc time in seconds prior to init
+            memtype: a dataclass class (not instance)
+
+        Returns:
+            None
+        """
+        super().__init__(utc_start, AgdaiCacheContent, filename_body)
+        # self.data, self.filename = init_file(utc_start, memtype)
+
+
+    def add(self, text: str):
         """
         Add text to our list of texts, add embedding as row to our
             embeddings-matrix
@@ -89,10 +229,7 @@ class ClAgdaiMem:
 
         Returns: None
         """
-        if "Command Error:" in text:
-            return ""
         self.data.texts.append(text)
-        self.data.agent_names.append(agent_name)
 
         embedding = get_ada_embedding(text)
 
@@ -105,20 +242,11 @@ class ClAgdaiMem:
             ],
             axis=0,
         )
-        self.data.memids.append(memid)
-        self.data.refs.append(refs)
-        self.data.rev_refs.append([])
-        self.data.scores.append(score)
-        for utc_start, seqnum in refs:
-            idx = self.data.seq_starts[str(utc_start)] + seqnum
-            self.data.rev_refs[idx].append(memid)
-            
-
-
-        with open(self.filename, "wb") as f:
-            out = orjson.dumps(self.data, option=SAVE_OPTIONS)
-            f.write(out)
-        return text
+        # self._incr_numrecs()
+        self.save_data()
+        # return (self._utc_start, len(self.data.texts) - self.data.seq_starts[self._utc_start])
+        # return the memid just created
+        return self.get_last_memid(), embedding
 
     def clear(self) -> str:
         """
@@ -128,6 +256,15 @@ class ClAgdaiMem:
         """
         self.data = AgdaiCacheContent()
         return "Obliviated"
+
+    def get_text(self, memid) -> str:
+        utc, seqnum = memid
+        idx = self.data.seq_starts[utc] + seqnum
+        return self.data.texts[idx]
+
+    def get_recs(self, n):
+        return [self.data.texts[i] for i in self.get_inseq_memids(n)]
+
 
     def get(self, data: str) -> list[Any] | None:
         """
@@ -139,6 +276,16 @@ class ClAgdaiMem:
         Returns: The most relevant data.
         """
         return self.get_relevant(data, 1)
+
+    def _get_topk(self, embedding: np.ndarray,  k: int) -> list[Any]:
+        scores = np.dot(self.data.embeddings, embedding)
+
+        return np.argsort(scores)[-(k+1):][::-1][1:]
+
+
+    def get_topk(self, embedding: np.ndarray,  k: int) -> list[Any]:
+        idxs = self._get_topk(embedding, k)
+        return self.get_memids(idxs)
 
     def get_relevant(self, text: str, k: int) -> list[Any]:
         """ "
@@ -153,9 +300,7 @@ class ClAgdaiMem:
         """
         embedding = get_ada_embedding(text)
 
-        scores = np.dot(self.data.embeddings, embedding)
-
-        top_k_indices = np.argsort(scores)[-k:][::-1]
+        top_k_indices = self._get_topk(embedding, k)
 
         return [self.data.texts[i] for i in top_k_indices]
 
@@ -165,6 +310,10 @@ class ClAgdaiMem:
         """
         return len(self.data.texts), self.data.embeddings.shape
 
+    def get_numrecs(self):
+        return len(self.data.texts)
+
+
 '''
             # Remove "thoughts" dictionary from "content"
             content_dict = json.loads(event["content"])
@@ -172,3 +321,4 @@ class ClAgdaiMem:
                 del content_dict["thoughts"]
             event["content"] = json.dumps(content_dict)
 '''
+

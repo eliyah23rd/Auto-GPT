@@ -31,8 +31,11 @@ class ClAGDAI(AutoGPTPluginTemplate):
         return False
 
     def on_response(self, response: str, *args, **kwargs) -> str:
-        """This method is called when a response is received from the model."""
+        """This method is called when a response is received from the model.
+        This is called for any call to GPT not only the chat_with_ai() in the main
+        loop start_interaction_loop()"""
         pass
+
 
     def can_handle_post_prompt(self) -> bool:
         """This method is called to check that the plugin can
@@ -64,7 +67,7 @@ class ClAGDAI(AutoGPTPluginTemplate):
         handle the post_planning method. 
         Returns:
             bool: True if the plugin can handle the post_planning method."""
-        return False
+        return True
 
     def post_planning(self, response: str) -> str:
         """This method is called after the planning chat completion is done. The respose is the return from GPT with thoughts strategies etc. Can be used to belay unethical commands
@@ -73,7 +76,7 @@ class ClAGDAI(AutoGPTPluginTemplate):
         Returns:
             str: The resulting response.
         """
-        pass
+        return self._data.process_actions(response)
 
     def can_handle_pre_instruction(self) -> bool:
         """This method is called to check that the plugin can
@@ -167,7 +170,7 @@ class ClAGDAI(AutoGPTPluginTemplate):
         max_tokens: int,
     ) -> bool:
         """This method is called to check that the plugin can
-        handle the chat_completion method.
+        handle the chat_completion method. Called directly before request to GPT, not only in main loop
         Args:
             messages (Dict[Any, Any]): The messages.
             model (str): The model name.
