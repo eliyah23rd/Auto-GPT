@@ -103,6 +103,26 @@ class ClAgdaiStorage:
         range_upper = max(0, num_inseq + 1 - start_back)
         return [(self._utc_start, i) for i in reversed(range(range_lower, range_upper))] # If the numbers were bigger, this should be a yield
     
+    def get_bck_memids(self, src_memid, n):
+        '''
+        Given a memid, retreive it and n-1 previous memid withing the same seq
+        Order is src_memid first
+        '''
+        utc, src_seq = src_memid
+        range_lower = max(0, (src_seq - n)+1)
+        range_upper = src_seq + 1
+        return [(utc, i) for i in reversed(range(range_lower, range_upper))] # If the numbers were bigger, this should be a yield
+    
+    def get_fwd_memids(self, src_memid, n):
+        '''
+        Given a memid, retreive it and n-1 next memid withing the same seq
+        Order is src_memid first
+        '''
+        _, num_inseq = self.get_last_memid()
+        utc, src_seq = src_memid
+        range_upper = min(num_inseq+1, src_seq + n)
+        return [(utc, i) for i in range(src_seq, range_upper)] # If the numbers were bigger, this should be a yield
+    
     def get_numrecs(self):
         raise NotImplementedError('Subclass must define the get_numrecs function')
     

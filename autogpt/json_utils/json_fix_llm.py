@@ -96,6 +96,9 @@ def fix_json_using_multiple_techniques(assistant_reply: str) -> Dict[Any, Any]:
         assistant_reply = assistant_reply[7:]
     if assistant_reply.endswith("```"):
         assistant_reply = assistant_reply[:-3]
+    if '{' in assistant_reply:
+        brace_idx = assistant_reply.index('{')
+        assistant_reply = assistant_reply[brace_idx:]
     try:
         return json.loads(assistant_reply)  # just check the validity
     except json.JSONDecodeError:  # noqa: E722
