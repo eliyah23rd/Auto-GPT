@@ -27,6 +27,7 @@ class ClAgdaiData(AbstractSingleton):
         self._advice_refs = ClAgdaiVals(self._utc_start, 'advice_refs', val_type='tuple')
         self._advice_scores = ClAgdaiVals(self._utc_start, 'advice_scores', val_type='float')
         self._advice_source = ClAgdaiVals(self._utc_start, 'advice_source', val_type='str')
+        self._helpful_hints = ClAgdaiVals(self._utc_start, 'helpful_hints', val_type='str') go rename file
         self._telegram_api_key = os.getenv("TELEGRAM_API_KEY")
         self._telegram_chat_id = os.getenv("TELEGRAM_CHAT_ID")
         self._telegram_utils = TelegramUtils(
@@ -34,7 +35,7 @@ class ClAgdaiData(AbstractSingleton):
                 [   ('score', 'send agent a score -10 -> 10 to express satisfaction'),
                     ('score_1', 'send agent a score -10 -> 10 to express your opinion about last action only'),
                     ('advice', 'send agent advice as to how to proceed'),
-                    ('request_logs', 'ask agent for the last <n> logs, defaults to 100')])
+                    ('history', 'ask agent for data <n> cycles back. Prints context, action, price and score')])
         self.init_bot()
         self.msg_user('System initialized')
 
@@ -49,7 +50,7 @@ class ClAgdaiData(AbstractSingleton):
     class UserCmd(Enum):
         eScore = 1
         eAdvice = 2
-        eGetLogs = 3
+        eGetHistory = 3
         eFreeForm = 4
         eScore_1 = 5
 
@@ -70,19 +71,19 @@ class ClAgdaiData(AbstractSingleton):
         match = re.search(pattern, user_str, re.IGNORECASE)
         if match:
             return self.UserCmd.eAdvice, match.group(1)
-        pattern = r"^/logs\s*(\d*)$"
+        pattern = r"^/history\s*(\d*)$"
         match = re.search(pattern, user_str, re.IGNORECASE)
         if match:
             if match.group(1):
-                return self.UserCmd.eGetLogs, int(match.group(1))
+                return self.UserCmd.eGetHistory, int(match.group(1))
             else:
-                return self.UserCmd.eGetLogs, 100
+                return self.UserCmd.eGetHistory, 0
         return self.UserCmd.eFreeForm, user_str
 
     c_mem_tightness = 0.1 # TBD Make configurable
 
     def create_helpful_input(self, context_as_str, context_embedding) -> str:
-        top_k = int(self._contexts.get_numrecs()) // 10 # TBD Make configurable
+        top_k = min(10, int(self._contexts.get_numrecs())) # int(self._contexts.get_numrecs()) // 10 # TBD Make configurable
         top_memids = self._contexts.get_topk(context_embedding, top_k)
         if random.random() < 0.5:
             suggestion = self.get_previous_advice(top_memids)
@@ -120,7 +121,7 @@ class ClAgdaiData(AbstractSingleton):
             }
         ]
         diff_response = create_chat_completion(messages, cfg.fast_llm_model)
-
+        
         return '. However these are the differences between the current context '\
             f'and the one where this action was successful\n: {diff_response}'
 
@@ -144,10 +145,16 @@ class ClAgdaiData(AbstractSingleton):
                     return val_ret
         return None
 
-        
+    def store_best_action(self, best_action, diff_summary):
+        context_memid = self._contexts.get_last_memid()
+        rec = f'Best action: {best_action}\n Diff summary: {diff_summary}'
+        self._helpful_hints.add((context_memid, rec))
+
     def get_previous_advice(self, top_memids) -> str:
         advice_memids = []; advice_scores = []
-        for amemid in top_memids:
+        # The following mitigates the effect of the reciprocal later so that instead of 1/2:1, 1/7:1/6
+        c_recip_mitigator = 5 # TBD make configurable
+        for idist, amemid in enumerate(top_memids):
             val_ret = self.find_closest_advice_ref(amemid, 5) # TBD: Make magic number configurable
             if val_ret is None:
                 continue
@@ -155,13 +162,16 @@ class ClAgdaiData(AbstractSingleton):
             # assert((context_utc, context_seq) == amemid)
             advice_memids.append((advice_utc, advice_seq))
             rando = (random.random() - 0.5) * self.c_mem_tightness
-            advice_scores.append(self._advice_scores.get_val((advice_utc, advice_seq)) + rando)
+            advice_score = self._advice_scores.get_val((advice_utc, advice_seq))
+            advice_score *= 1 / (c_recip_mitigator + idist)
+            advice_scores.append(advice_score + rando)
         if len(advice_scores) < 1:
             return ''
         imax = advice_scores.index(max(advice_scores))
         best_advice = self._advice.get_text(advice_memids[imax])
         # if advice_scores[imax] < 2:
         #     return ''
+        self.store_advice(best_advice, '_retrieved')
         reminder = '''The following advice was given to me by my user in a different context.\n
 I should try and follow my user\'s advice but realize that it may have been given in a different context.\n
 I must make sure I use the json format specified above for my response.
@@ -178,8 +188,10 @@ I must make sure I use the json format specified above for my response.
         Call the model to list the differences
         present the best action
         '''
+        # The following mitigates the effect of the reciprocal below so that instead of 1/2:1, 1/7:1/6
+        c_recip_mitigator = 5 # TBD make configurable
         action_memids = []; action_scores = []; context_memids = []
-        for amemid in top_memids:
+        for idist, amemid in enumerate(top_memids):
             val_ret = self._response_refs.get_val(amemid)
             if val_ret is None:
                 continue
@@ -187,14 +199,17 @@ I must make sure I use the json format specified above for my response.
             # assert((context_utc, context_seq) == amemid)
             action_memids.append((action_utc, action_seq))
             rando = (random.random() - 0.5) * self.c_mem_tightness
-            action_scores.append(self._action_scores.get_val((action_utc, action_seq)) + rando)
+            action_score = self._action_scores.get_val((action_utc, action_seq))
+            action_score = 0 if action_score is None else action_score
+            action_score *= 1 / (c_recip_mitigator + idist)
+            action_scores.append(action_score + rando)
             context_memids.append(amemid)
-        # if len(action_scores) < 1:
-        #     return ''
+        if len(action_scores) < 1:
+            return ''
         imax = action_scores.index(max(action_scores))
         best_action = self._actions.get_text(action_memids[imax])
-        if action_scores[imax] < 4:
-            return ''
+        # if action_scores[imax] < 4:
+        #     return ''
         '''
         The way to improve this is to create a ranking for each of action of how close each other
         action is. Then add the other scores weighted by reciprocal ranking within the set of 
@@ -213,6 +228,8 @@ I must make sure I use the json format specified above for my response.
         diff_summary = self.get_context_diff_summary(context_as_str, context_memids[imax])
         if diff_summary is None or len(diff_summary) < 1:
             diff_summary = 'in a different context.'
+
+        self.store_best_action(best_action, diff_summary)
 
         reminder = f'This past response was successful {diff_summary}. \n'\
                 'I should consider making a similar response but adapt it to the task at hand. \n'\
@@ -235,9 +252,9 @@ I must make sure I use the json format specified above for my response.
             # The policy being tried out here is to assume that any score 
             # goes back only as far as some other score but cannot replace
             # it or add to it.
-            if rec_score != 0:
-                break
-            self._action_scores.set_val(memid, rec_score + score_frac)
+            if rec_score is not None:
+                continue
+            self._action_scores.set_val(memid, score_frac) # rec_score + 
             score_frac *= 0.8 # TBD make user settable, configurable or something
             del memid
 
@@ -261,7 +278,7 @@ I must make sure I use the json format specified above for my response.
         last_action_memid, _ = self._actions.add(gpt_response_json)
         last_context_memid = self._contexts.get_last_memid()
         self._response_refs.add((last_context_memid, last_action_memid))
-        self._action_scores.add((last_action_memid, 0))
+        self._action_scores.add((last_action_memid, None)) # NB None and not zero for action score
         return gpt_response
     
     def store_advice(self, advice : str, source : str) -> None:
@@ -273,8 +290,34 @@ I must make sure I use the json format specified above for my response.
         advice_memid, _ = self._advice.add(advice)
         last_context_memid = self._contexts.get_last_memid()
         self._advice_refs.add((last_context_memid, advice_memid))
-        self._advice_scores.add((advice_memid, 0))
+        self._advice_scores.add((advice_memid, 0)) # NB 0 and not None for advice score
         self._advice_source.add((advice_memid, source))
+
+    def get_history(self, num_back):
+        msg = ''
+        context_memid = self._contexts.get_inseq_memids(1 ,num_back)[0]
+        context_text = self._contexts.get_text(context_memid)
+        if context_text is not None:
+            msg += f'Context:\n{context_text}\n'
+        action_memid = self._response_refs.get_val(context_memid)
+        action_score = None
+        if action_memid is not None:
+            action_text = self._actions.get_text(action_memid)
+            if action_text is not None:
+                msg += f'LLM response:\n{action_text}\n'
+            action_score = self._action_scores.get_val(action_memid)
+        advice_memid = self._advice_refs.get_val(context_memid)
+        if advice_memid is not None:
+            advice_text = self._advice.get_text(advice_memid)
+            if advice_memid is not None:
+                msg += f'advice applied:\n{advice_text}\n'
+        hint_text = self._helpful_hints.get_val(context_memid)
+        if hint_text is not None:
+            msg += f'Helpful hint added: \n{hint_text}\n' 
+        if action_score is not None:
+            msg += f'score for action:\n{action_score}'
+
+        self.msg_user(msg)
 
     def process_msgs(self, messages : dict[str, str]):
         # new_messages = [msg for msg in messages if msg not in self._full_message_history]
@@ -287,8 +330,8 @@ I must make sure I use the json format specified above for my response.
         user_message = self._telegram_utils.check_for_user_input()
         if len(user_message) > 0:
             msg_type, content = self.parse_user_msg(user_message)
-            if msg_type == self.UserCmd.eGetLogs:
-                self.msg_user('logs..logs..')
+            if msg_type == self.UserCmd.eGetHistory:
+                self.get_history(content)
                 return ''
             elif msg_type == self.UserCmd.eScore:
                 self.apply_scores(0, 10, content)
@@ -304,8 +347,8 @@ I must make sure I use the json format specified above for my response.
 Use the command "telegram_message_user" from the COMMANDS list if you wish to reply.\n\
 Ensure your response uses the JSON format specified above.'
 
-        if self._contexts.get_numrecs() > 10:
-            return self.create_helpful_input(context_as_str, context_embedding)
+        # if self._contexts.get_numrecs() > 10:
+        return self.create_helpful_input(context_as_str, context_embedding)
 
         return ''
 

@@ -95,12 +95,37 @@ class ClAgdaiStorage:
             f.write(out)
 
     def get_last_memid(self):
+        '''
+        Get the last memid in the current utc
+        '''
         return (self._utc_start, (self.get_numrecs() - 1) - self.data.seq_starts[self._utc_start])
 
+    def _get_last_seq_memid(self, amemid):
+        '''
+        Given a memid, find its utc and then get the last memid
+        with that utc
+        '''
+        lstarts, d_rev = self._get_utc_prep()
+        lstarts.sort()
+        utc, _ = amemid
+        this_start = self.data.seq_starts[utc]
+        lstarts_idx = lstarts.index(this_start)
+        if lstarts_idx == len(lstarts) - 1:
+            return self.get_last_memid()
+        utc_next = d_rev[lstarts[lstarts_idx+1]]
+        return utc, self.data.seq_starts[utc_next] - self.data.seq_starts[utc] - 1
+
     def get_inseq_memids(self, n, start_back : int = 0):
+        '''
+        Get memids from the current utc
+        Starts at startback from the the last (i.e. startback=0 means the last)
+        Goes back and gets n from the end, ignoring start_back
+        '''
         _, num_inseq = self.get_last_memid()
-        range_lower = max(0, (num_inseq - n)+1)
-        range_upper = max(0, num_inseq + 1 - start_back)
+        src_seq = max(0, num_inseq - start_back)
+        range_upper = src_seq + 1
+        range_lower = min(max(0, (src_seq - n)+1), range_upper-1)
+
         return [(self._utc_start, i) for i in reversed(range(range_lower, range_upper))] # If the numbers were bigger, this should be a yield
     
     def get_bck_memids(self, src_memid, n):
@@ -118,7 +143,7 @@ class ClAgdaiStorage:
         Given a memid, retreive it and n-1 next memid withing the same seq
         Order is src_memid first
         '''
-        _, num_inseq = self.get_last_memid()
+        _, num_inseq = self._get_last_seq_memid(src_memid)
         utc, src_seq = src_memid
         range_upper = min(num_inseq+1, src_seq + n)
         return [(utc, i) for i in range(src_seq, range_upper)] # If the numbers were bigger, this should be a yield
@@ -134,14 +159,14 @@ class ClAgdaiStorage:
 
         return lstarts, d_rev
 
-    
+    def _highest_number_lte(self, lst, num):
+        return max([i for i in lst if i <= num])
+
     def get_memids(self, idxs):
-        def highest_number_lte(lst, num):
-            return max([i for i in lst if i <= num])
         lstarts, d_rev = self._get_utc_prep()
         lret = []
         for idx in idxs:
-            seq_start = highest_number_lte(lstarts, idx)
+            seq_start = self._highest_number_lte(lstarts, idx)
             lret.append((d_rev[seq_start], idx - seq_start))
         return lret
 
@@ -299,8 +324,13 @@ class ClAgdaiMem(ClAgdaiStorage):
 
     def _get_topk(self, embedding: np.ndarray,  k: int) -> list[Any]:
         scores = np.dot(self.data.embeddings, embedding)
+        # The following is far more efficient for large arrays than using argsort
+        top_idxs = np.argpartition(scores, -(k+1))[-(k+1):]
+        top_scores = scores[top_idxs]
+        top_top_idxs = np.argsort(-top_scores)
+        top_idxs = top_idxs[top_top_idxs]
+        return top_idxs[1:]
 
-        return np.argsort(scores)[-(k+1):][::-1][1:]
 
 
     def get_topk(self, embedding: np.ndarray,  k: int) -> list[Any]:

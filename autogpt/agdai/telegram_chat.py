@@ -142,8 +142,9 @@ class TelegramUtils():
         recipient_chat_id = self.chat_id
         bot = await self.get_bot()
         try:
-            msg = await bot.send_message(chat_id=recipient_chat_id, text=message)
-            return f'Telegram message sent: {msg.text}.'
+            for i in range(0, len(message), 4096):
+                await bot.send_message(chat_id=recipient_chat_id, text=message[i:i+4096])
+            return f'Telegram message sent: {message}.'
         except TelegramError as te:
             return f'Error sending telegram message. Error {te}'
 
