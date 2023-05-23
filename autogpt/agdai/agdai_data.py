@@ -27,7 +27,7 @@ class ClAgdaiData(AbstractSingleton):
         self._advice_refs = ClAgdaiVals(self._utc_start, 'advice_refs', val_type='tuple')
         self._advice_scores = ClAgdaiVals(self._utc_start, 'advice_scores', val_type='float')
         self._advice_source = ClAgdaiVals(self._utc_start, 'advice_source', val_type='str')
-        self._helpful_hints = ClAgdaiVals(self._utc_start, 'helpful_hints', val_type='str') go rename file
+        self._helpful_hints = ClAgdaiVals(self._utc_start, 'helpful_hints', val_type='str')
         self._telegram_api_key = os.getenv("TELEGRAM_API_KEY")
         self._telegram_chat_id = os.getenv("TELEGRAM_CHAT_ID")
         self._telegram_utils = TelegramUtils(
