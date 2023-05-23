@@ -83,7 +83,9 @@ class ClAgdaiData(AbstractSingleton):
     c_mem_tightness = 0.1 # TBD Make configurable
 
     def create_helpful_input(self, context_as_str, context_embedding) -> str:
-        top_k = min(10, int(self._contexts.get_numrecs())) # int(self._contexts.get_numrecs()) // 10 # TBD Make configurable
+        numrecs = int(self._contexts.get_numrecs())
+        assert numrecs > 1, 'This function may only be called after checking the size of the db'
+        top_k = min(10,  - 1) # int(self._contexts.get_numrecs()) // 10 # TBD Make configurable
         top_memids = self._contexts.get_topk(context_embedding, top_k)
         if random.random() < 0.5:
             suggestion = self.get_previous_advice(top_memids)
@@ -347,8 +349,8 @@ I must make sure I use the json format specified above for my response.
 Use the command "telegram_message_user" from the COMMANDS list if you wish to reply.\n\
 Ensure your response uses the JSON format specified above.'
 
-        # if self._contexts.get_numrecs() > 10:
-        return self.create_helpful_input(context_as_str, context_embedding)
+        if self._contexts.get_numrecs() > 3:
+            return self.create_helpful_input(context_as_str, context_embedding)
 
         return ''
 
