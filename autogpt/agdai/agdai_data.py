@@ -355,7 +355,7 @@ Ensure your response uses the JSON format specified above.'
         if self._contexts.get_numrecs() > 3:
             hint_text = self.create_helpful_input(context_as_str, context_embedding)
             if len(hint_text) > 3:
-                logger.typewriter_log('\n\n\nHINT:', Fore.YELLOW, hint_text)
+                logger.typewriter_log('HINT:', Fore.YELLOW, f"\n\n\n{hint_text}")
                 return hint_text
 
         return ''
