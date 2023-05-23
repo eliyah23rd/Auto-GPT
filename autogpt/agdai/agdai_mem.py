@@ -325,7 +325,6 @@ class ClAgdaiMem(ClAgdaiStorage):
     def _get_topk(self, embedding: np.ndarray,  k: int) -> list[Any]:
         scores = np.dot(self.data.embeddings, embedding)
         # The following is far more efficient for large arrays than using argsort
-        if 
         top_idxs = np.argpartition(scores, -(k+1))[-(k+1):]
         top_scores = scores[top_idxs]
         top_top_idxs = np.argsort(-top_scores)
