@@ -6,13 +6,14 @@ import difflib
 import random
 import json
 from enum import Enum
+from colorama import Fore # , Style
 # from typing import List #, Any, Dict, Optional, TypedDict, TypeVar, Tuple
 from autogpt.singleton import AbstractSingleton
 from autogpt.config import Config
+from autogpt.logs import logger
 from autogpt.llm.llm_utils import create_chat_completion
 from .agdai_mem import ClAgdaiMem, ClAgdaiVals
 from .telegram_chat import TelegramUtils
-
 class ClAgdaiData(AbstractSingleton):
     def __init__(self) -> None:
         super().__init__()
@@ -99,6 +100,8 @@ class ClAgdaiData(AbstractSingleton):
         context_diff = difflib.unified_diff(context_as_str.splitlines(), top_context.splitlines())
         now_str, top_str = '', ''
         for line in context_diff:
+            if len(line) < 3:
+                continue
             if line[0] == '-' and line[1] != '-':
                 now_str += line[1:] + '\n'
             elif line[0] == '+' and line[1] != '+':
@@ -350,7 +353,10 @@ Use the command "telegram_message_user" from the COMMANDS list if you wish to re
 Ensure your response uses the JSON format specified above.'
 
         if self._contexts.get_numrecs() > 3:
-            return self.create_helpful_input(context_as_str, context_embedding)
+            hint_text = self.create_helpful_input(context_as_str, context_embedding)
+            if len(hint_text) > 3:
+                logger.typewriter_log('\n\n\nHINT:', Fore.YELLOW, hint_text)
+                return hint_text
 
         return ''
 
