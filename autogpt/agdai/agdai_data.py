@@ -11,14 +11,17 @@ from colorama import Fore # , Style
 from autogpt.singleton import AbstractSingleton
 from autogpt.config import Config
 from autogpt.logs import logger
+from autogpt.ai_guidelines import AIGuidelines
 from autogpt.llm.llm_utils import create_chat_completion
 from .agdai_mem import ClAgdaiMem, ClAgdaiVals
 from .telegram_chat import TelegramUtils
 class ClAgdaiData(AbstractSingleton):
     def __init__(self) -> None:
         super().__init__()
+        cfg = Config()
         self._curr_agent_name = ''
         self._utc_start = int(time.time())
+        self._guidelines_mgr = AIGuidelines(cfg.ai_guidelines_file)
         self._seqnum = 0
         self._contexts = ClAgdaiMem(self._utc_start, 'contexts')
         self._actions = ClAgdaiMem(self._utc_start, 'actions')
@@ -174,8 +177,8 @@ class ClAgdaiData(AbstractSingleton):
             return ''
         imax = advice_scores.index(max(advice_scores))
         best_advice = self._advice.get_text(advice_memids[imax])
-        # if advice_scores[imax] < 2:
-        #     return ''
+        if advice_scores[imax] < 1:
+            return ''
         self.store_advice(best_advice, '_retrieved')
         reminder = '''The following advice was given to me by my user in a different context.\n
 I should try and follow my user\'s advice but realize that it may have been given in a different context.\n
@@ -213,8 +216,8 @@ I must make sure I use the json format specified above for my response.
             return ''
         imax = action_scores.index(max(action_scores))
         best_action = self._actions.get_text(action_memids[imax])
-        # if action_scores[imax] < 4:
-        #     return ''
+        if action_scores[imax] < 1:
+            return ''
         '''
         The way to improve this is to create a ranking for each of action of how close each other
         action is. Then add the other scores weighted by reciprocal ranking within the set of 
@@ -355,7 +358,8 @@ Ensure your response uses the JSON format specified above.'
         if self._contexts.get_numrecs() > 3:
             hint_text = self.create_helpful_input(context_as_str, context_embedding)
             if len(hint_text) > 3:
-                logger.typewriter_log('HINT:', Fore.YELLOW, f"\n\n\n{hint_text}")
+                # logger.typewriter_log('HINT:', Fore.YELLOW, f"\n\n\n{hint_text}")
+                print(f'HINT:\n\n\n{hint_text}')
                 return hint_text
 
         return ''
