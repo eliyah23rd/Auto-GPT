@@ -85,7 +85,7 @@ class ClAgdaiData(AbstractSingleton):
     def create_helpful_input(self, context_as_str, context_embedding) -> str:
         numrecs = int(self._contexts.get_numrecs())
         assert numrecs > 1, 'This function may only be called after checking the size of the db'
-        top_k = min(10,  - 1) # int(self._contexts.get_numrecs()) // 10 # TBD Make configurable
+        top_k = min(10, numrecs - 1) # int(self._contexts.get_numrecs()) // 10 # TBD Make configurable
         top_memids = self._contexts.get_topk(context_embedding, top_k)
         if random.random() < 0.5:
             suggestion = self.get_previous_advice(top_memids)
@@ -315,7 +315,7 @@ I must make sure I use the json format specified above for my response.
                 msg += f'advice applied:\n{advice_text}\n'
         hint_text = self._helpful_hints.get_val(context_memid)
         if hint_text is not None:
-            msg += f'Helpful hint added: \n{hint_text}\n' 
+            msg += f'Helpful hint added: \n{hint_text}\n'
         if action_score is not None:
             msg += f'score for action:\n{action_score}'
 
