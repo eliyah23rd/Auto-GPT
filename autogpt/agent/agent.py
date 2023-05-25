@@ -19,7 +19,7 @@ from autogpt.speech import say_text
 from autogpt.spinner import Spinner
 from autogpt.utils import clean_input
 from autogpt.workspace import Workspace
-from autogpt.ai_guidelines import AIGuidelines
+# from autogpt.ai_guidelines import AIGuidelines
 
 
 class Agent:
@@ -49,7 +49,6 @@ class Agent:
 
         The triggering prompt reminds the AI about its short term meta task
         (defining the next task)
-        ai_guidelines: The guidelines object that monitors history for ethical and performance rule violations
     """
 
     def __init__(
@@ -63,7 +62,7 @@ class Agent:
         system_prompt,
         triggering_prompt,
         workspace_directory,
-        ai_guidelines = None,
+        # ai_guidelines = None,
     ):
         cfg = Config()
         self.ai_name = ai_name
@@ -82,10 +81,10 @@ class Agent:
         self.created_at = datetime.now().strftime("%Y%m%d_%H%M%S")
         self.cycle_count = 0
         self.log_cycle_handler = LogCycleHandler()
-        if ai_guidelines is None:
-            self.ai_guidelines = AIGuidelines("ai_guidelines.yaml", bsilent=True)
-        else:
-            self.ai_guidelines = ai_guidelines
+        # if ai_guidelines is None:
+        #     self.ai_guidelines = AIGuidelines("ai_guidelines.yaml", bsilent=True)
+        # else:
+        #     self.ai_guidelines = ai_guidelines
 
     def start_interaction_loop(self):
         # Interaction Loop

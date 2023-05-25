@@ -121,7 +121,7 @@ def run_auto_gpt(
     cfg.set_plugins(scan_plugins(cfg, cfg.debug_mode))
     cfg.plugins.append(ClAGDAI())
     # cfg.plugins.append(AutoGPTTelegram())
-    guidelines_mgr = AIGuidelines(cfg.ai_guidelines_file)
+    # guidelines_mgr = AIGuidelines(cfg.ai_guidelines_file)
 
     # Create a CommandRegistry instance and scan default folder
     command_registry = CommandRegistry()
@@ -189,6 +189,6 @@ def run_auto_gpt(
         system_prompt=system_prompt,
         triggering_prompt=DEFAULT_TRIGGERING_PROMPT,
         workspace_directory=workspace_directory,
-        ai_guidelines=guidelines_mgr,
+        # ai_guidelines=guidelines_mgr,
     )
     agent.start_interaction_loop()

@@ -7,6 +7,7 @@ import yaml
 from colorama import Fore
 from openai.error import RateLimitError
 
+from autogpt.config import Config
 from autogpt.logs import logger
 from autogpt.llm.llm_utils import create_chat_completion
 from autogpt.llm.token_counter import count_message_tokens
@@ -130,7 +131,7 @@ You will examine the history of messages provided here in the light of the follo
 If you find no significant violation of any of the guidelines please respond with the word "continue".
 However, if your analysis of the message history leads you to  suspect that any violation of the guidelines is occurring
 please respond with a detailed report that includes the complete and exact text of the specific guideline(s)
-that are being violated.
+that are being violated and an explanation why the current history of messages indicates violation.
 This is the list of guidelines that the user wants the system to abide by. Conforming to these guidelines
 is even more important than success at achieving your goals:\n\n
 """
@@ -143,7 +144,7 @@ is even more important than success at achieving your goals:\n\n
         return full_prompt
 
 
-    def exec_monitor(self, goals, full_message_history, permanent_memory, token_limit, model):
+    def exec_monitor(self, context_messages : list[dict[str, str]]):
         """Interact with the OpenAI API, sending the prompt, user input, message history,
         and permanent memory."""
         if self.bsilent:
@@ -152,64 +153,53 @@ is even more important than success at achieving your goals:\n\n
         while True:
             try:
                 """
-                Interact with the OpenAI API, sending the prompt, user input,
-                    message history, and permanent memory.
+                Interact with the OpenAI API, sending the xurrent prompt to be evaluated for 
+                    guideline violation.
 
                 Args:
-                    goals (str): The role and goals of the AI. - TBD Not in use yet.
-                    full_message_history (list): The list of all messages sent between the
-                        user and the AI.
-                    permanent_memory (Obj): The memory object containing the permanent
-                    memory.
-                    token_limit (int): The maximum number of tokens allowed in the API call.
-                    model (str): The name of the OpenAI model to use
+                    messages : list[dict[str, str]] : The list of all messages built up so far as the context
+                    that will, with plugin additions, be sent ot the model
 
                 Returns:
-                str: The AI's response.
+                    str: The AI's response.
                 """
-                # Reserve 1000 tokens for the response
 
-                logger.debug(f"Token limit: {token_limit}")
-                send_token_limit = token_limit - 1000
-
-                logger.debug(f"Memory Stats: {permanent_memory.get_stats()}")
-
+                cfg = Config()
                 system_msg = create_chat_message("system", self.gprompt)
                 lmessages = [system_msg]
-                next_message_to_add_index = len(full_message_history) - 1
-                current_tokens_used = count_message_tokens([system_msg], model)
-
-                while next_message_to_add_index >= 0:
-                    # print (f"CURRENT TOKENS USED: {current_tokens_used}")
-                    message_to_add = full_message_history[next_message_to_add_index]
-
-                    tokens_to_add = count_message_tokens(
-                        [message_to_add], model
-                    )
-                    if current_tokens_used + tokens_to_add > send_token_limit:
-                        break
-
-                    # Add the most recent message to the start of the current context,
-                    #  after the two system prompts.
-                    lmessages.insert(
-                        0, message_to_add
-                    )
-
-                    # Count the currently used tokens
-                    current_tokens_used += tokens_to_add
-
-                    # Move to the next most recent message in the full message history
-                    next_message_to_add_index -= 1
-
+                current_tokens_used = count_message_tokens([system_msg], cfg.smart_llm_model)
+                for imsg, message in enumerate(context_messages):
+                    if imsg == 0:
+                        c_sys_msg_start = 'You are '
+                        assert 'role' in message and message['role'] == 'system' and\
+                                'content' in message and \
+                                message['content'][:len(c_sys_msg_start)] == c_sys_msg_start,\
+                                'Error! AUto-GPT code has changed so that the initial message is unexpected'
+                        continue
+                    elif imsg == len(context_messages) - 1:
+                        c_last_msg_start = 'Determine which next command '
+                        assert 'role' in message and message['role'] == 'user' and\
+                                'content' in message and \
+                                message['content'][:len(c_last_msg_start)] == c_last_msg_start,\
+                                'Error! AUto-GPT code has changed so that the last message is unexpected'
+                        continue
+                    current_tokens_used += count_message_tokens([message], cfg.smart_llm_model)
+                    lmessages.append(message)
+                c_violation_report_start = 'Guidelines Violation'
+                prompt_msg = create_chat_message('user', 'Please do nothing other than check this history '\
+                        'for guideline violations. If there are violations, start your response '\
+                        f'with the words \"{c_violation_report_start}\" '\
+                        'and if no violations are found, respond with the single word "continue".')
+                current_tokens_used += count_message_tokens([prompt_msg], cfg.smart_llm_model)
+                lmessages.append(prompt_msg)
                 # Calculate remaining tokens
-                tokens_remaining = token_limit - current_tokens_used
+                tokens_remaining = cfg.smart_token_limit - current_tokens_used
                 # assert tokens_remaining >= 0, "Tokens remaining is negative.
                 # This should never happen, please submit a bug report at
                 #  https://www.github.com/Torantulino/Auto-GPT"
 
                 # Debug print the current context
                 logger.debug("Guidelines Monitoring...")
-                logger.debug(f"Guidelines Token limit: {token_limit}")
                 logger.debug(f"Guidelines Send Token Count: {current_tokens_used}")
                 logger.debug(f"Guidelines Tokens remaining for response: {tokens_remaining}")
                 logger.debug("------------ CONTEXT SENT TO AI ---------------")
@@ -223,25 +213,24 @@ is even more important than success at achieving your goals:\n\n
 
                 # TODO: use a model defined elsewhere, so that model can contain
                 # temperature and other settings we care about
-                assistant_reply = create_chat_completion(
-                    model=model,
+                violation_reply = create_chat_completion(
+                    model=cfg.fast_llm_model,
                     messages=lmessages,
                     max_tokens=tokens_remaining,
                 )
 
-                if assistant_reply.strip().lower() == "continue":
-                    return "continue"
+                if violation_reply.strip().lower() == "continue":
+                    return False, "continue"
 
+                if violation_reply[:len(c_violation_report_start)].lower() != c_violation_report_start.lower():
+                    logger.typewriter_log('Badly formatted guideline violation.')
+                    return False, 'Badly formatted response'
                 # Update full message history and permanent memory
-                alert_msg = f'Guidelines violation alert requires investgation: {assistant_reply}'
-                full_message_history.append(
-                    create_chat_message("system", alert_msg)
-                )
-                permanent_memory.add(alert_msg)
+                alert_msg = f'Guidelines violation alert requires investigation: {violation_reply}'
                 logger.debug(f"Guidelines violation: {alert_msg}")
                 logger.typewriter_log("Guidelines violation:", Fore.RED,  alert_msg)
 
-                return assistant_reply
+                return True, alert_msg
             except RateLimitError:
                 # TODO: When we switch to langchain, this is built in
                 print("Error: ", "API Rate Limit Reached. Waiting 10 seconds...")

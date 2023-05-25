@@ -244,7 +244,7 @@ I must make sure I use the json format specified above for my response.
                 'I must make sure I use the json format specified above for my response.'
         return f'Here is an example of successful response that I made in the past: \n{best_action}\n{reminder}'
 
-    def apply_scores(self, start_back: int = 0, num_back: int = 10, score : float = 0):
+    def apply_scores(self, start_back: int = 0, num_back: int = 10, score : float = 0, b_force_score = False):
         """
         Apply scores to a memory table (such as actions or advice) going back in time
         Scores are only applied to the current run
@@ -253,6 +253,7 @@ I must make sure I use the json format specified above for my response.
             num_back. Apply with decreasing factor as many entries back as num_back.
                         Note num_back is counted from the last entry, even if start_back is > 0
             score. Value to add to current value (score)
+            b_force_score. If True, writes a score even if there was already a score assigned
         """
         score_frac = score
         for memid in self._actions.get_inseq_memids(num_back, start_back):
@@ -260,7 +261,7 @@ I must make sure I use the json format specified above for my response.
             # The policy being tried out here is to assume that any score 
             # goes back only as far as some other score but cannot replace
             # it or add to it.
-            if rec_score is not None:
+            if rec_score is not None and not b_force_score:
                 continue
             self._action_scores.set_val(memid, score_frac) # rec_score + 
             score_frac *= 0.8 # TBD make user settable, configurable or something
@@ -327,9 +328,16 @@ I must make sure I use the json format specified above for my response.
 
         self.msg_user(msg)
 
-    def process_msgs(self, messages : dict[str, str]):
+    def process_msgs(self, messages : list[dict[str, str]]):
         # new_messages = [msg for msg in messages if msg not in self._full_message_history]
         # look for "Error:"" in last msg
+        bviolation, violation_alert = self._guidelines_mgr.exec_monitor(messages)
+        if bviolation:
+            self.apply_scores(0, 10, -10, b_force_score=True)
+            # In the future we will investigate more carefully
+            self.msg_user(f'Guideline violation alert! Shutting down! Report: {violation_alert}')
+            raise ValueError('Guideline violation!')
+
         if len(messages) > 2 and 'Error:' in messages[-3]['content']:
             self.apply_scores(0, 1, -7)
         context_as_str = '\n'.join([f'{key} {value}' for message_dict in messages \

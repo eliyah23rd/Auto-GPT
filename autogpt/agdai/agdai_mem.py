@@ -206,7 +206,9 @@ class ClAgdaiVals(ClAgdaiStorage):
     
     def set_val(self, memid, new_val) -> None:
         idx = self._d_lkp.get(memid, None)
-        assert idx is not None, 'Error! memid to set val for, not found in storage'
+        if idx is None:
+            return
+        # assert idx is not None, 'Error! memid to set val for, not found in storage'
         lkp_memid, _ = self.data.vals[idx]
         assert lkp_memid == memid
         self.data.vals[idx] = (memid, new_val)
