@@ -2,6 +2,8 @@ This is a early version of a fork housing a plugin designed to let your Auto-GPT
 
 You agent is controlled by Telegram, please check out env.template for details on entering Telegram keys.
 
+The concept is described on Reddit at https://www.reddit.com/r/ExploringGPT/comments/13uxz0s/the_quest_for_personal_ai_an_autonomous_gpt_agent/
+
 # Auto-GPT: An Autonomous GPT-4 Experiment
 [![Official Website](https://img.shields.io/badge/Official%20Website-agpt.co-blue?style=flat&logo=world&logoColor=white)](https://agpt.co)
 [![Unit Tests](https://img.shields.io/github/actions/workflow/status/Significant-Gravitas/Auto-GPT/ci.yml?label=unit%20tests)](https://github.com/Significant-Gravitas/Auto-GPT/actions/workflows/ci.yml)
