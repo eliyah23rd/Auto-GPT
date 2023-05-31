@@ -93,7 +93,7 @@ def chat_with_ai(
     user_input_msg = Message("user", user_input)
     current_tokens_used += count_message_tokens([user_input_msg], model)
 
-            current_tokens_used += 800  # Account for memory (appended later) TODO: The final memory may be less than 500 tokens
+    current_tokens_used += 500  # Reserve space for new_summary_message
 
     # Add Messages until the token limit is reached or there are no more messages to add.
     for cycle in reversed(list(agent.history.per_cycle())):
@@ -145,29 +145,28 @@ def chat_with_ai(
     # Append user input, the length of this is accounted for above
     message_sequence.append(user_input_msg)
 
-            plugin_count = len(cfg.plugins)
-            for i, plugin in enumerate(cfg.plugins):
-                if not plugin.can_handle_on_planning():
-                    continue
-                plugin_response = plugin.on_planning(
-                    agent.prompt_generator, current_context
-                )
-                if not plugin_response or plugin_response == "":
-                    continue
-                tokens_to_add = count_message_tokens(
-                    [create_chat_message("system", plugin_response)], model
-                )
-                if current_tokens_used + tokens_to_add > send_token_limit:
-                    logger.debug("Plugin response too long, skipping:", plugin_response)
-                    logger.debug("Plugins remaining at stop:", plugin_count - i)
-                    break
-                current_context.append(create_chat_message("system", plugin_response))
-
-            # Calculate remaining tokens
-            tokens_remaining = token_limit - current_tokens_used
-            # assert tokens_remaining >= 0, "Tokens remaining is negative.
-            # This should never happen, please submit a bug report at
-            #  https://www.github.com/Torantulino/Auto-GPT"
+    plugin_count = len(config.plugins)
+    for i, plugin in enumerate(config.plugins):
+        if not plugin.can_handle_on_planning():
+            continue
+        plugin_response = plugin.on_planning(
+            agent.config.prompt_generator, message_sequence.raw()
+        )
+        if not plugin_response or plugin_response == "":
+            continue
+        tokens_to_add = count_message_tokens(
+            [Message("system", plugin_response)], model
+        )
+        if current_tokens_used + tokens_to_add > send_token_limit:
+            logger.debug(f"Plugin response too long, skipping: {plugin_response}")
+            logger.debug(f"Plugins remaining at stop: {plugin_count - i}")
+            break
+        message_sequence.add("system", plugin_response)
+    # Calculate remaining tokens
+    tokens_remaining = token_limit - current_tokens_used
+    # assert tokens_remaining >= 0, "Tokens remaining is negative.
+    # This should never happen, please submit a bug report at
+    #  https://www.github.com/Torantulino/Auto-GPT"
 
     # Debug print the current context
     logger.debug(f"Token limit: {token_limit}")
