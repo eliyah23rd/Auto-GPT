@@ -12,7 +12,8 @@ from autogpt.singleton import AbstractSingleton
 from autogpt.config import Config
 from autogpt.logs import logger
 from autogpt.ai_guidelines import AIGuidelines
-from autogpt.llm.llm_utils import create_chat_completion
+from autogpt.llm.utils import create_chat_completion
+from autogpt.llm.base import ChatSequence, Message
 from .agdai_mem import ClAgdaiMem, ClAgdaiVals
 from .telegram_chat import TelegramUtils
 class ClAgdaiData(AbstractSingleton):
@@ -118,17 +119,20 @@ class ClAgdaiData(AbstractSingleton):
         user_prompt = f'current context:\n{now_str}'\
                 f'previous context:\n{top_str}'
         cfg = Config()
-        messages = [
-            {
-                "role": "system",
-                "content": sys_prompt,
-            },
-            {
-                "role": "user",
-                "content": user_prompt,
-            }
-        ]
-        diff_response = create_chat_completion(messages, cfg.fast_llm_model)
+        diff_messages = ChatSequence.for_model(
+            cfg.fast_llm_model,
+            [
+                {
+                    "role": "system",
+                    "content": sys_prompt,
+                },
+                {
+                    "role": "user",
+                    "content": user_prompt,
+                }
+            ]
+        )
+        diff_response = create_chat_completion(diff_messages, cfg.fast_llm_model)
         
         return '. However these are the differences between the current context '\
             f'and the one where this action was successful\n: {diff_response}'

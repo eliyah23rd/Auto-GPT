@@ -9,8 +9,8 @@ from openai.error import RateLimitError
 
 from autogpt.config import Config
 from autogpt.logs import logger
-from autogpt.llm.llm_utils import create_chat_completion
-from autogpt.llm.token_counter import count_message_tokens
+from autogpt.llm.utils import count_message_tokens, create_chat_completion
+from autogpt.llm.base import ChatSequence, Message
 
 def create_chat_message(role, content):
     """
@@ -144,12 +144,16 @@ is even more important than success at achieving your goals:\n\n
         return full_prompt
 
 
-    def exec_monitor(self, context_messages : list[dict[str, str]]):
+    def exec_monitor(self, context_messages : list[dict[str, str]], model: str | None = None):
         """Interact with the OpenAI API, sending the prompt, user input, message history,
         and permanent memory."""
         if self.bsilent:
             return 'continue'
 
+        config = Config()
+        if model is None:
+            model = config.fast_llm_model
+            token_limit = config.fast_token_limit
         while True:
             try:
                 """
@@ -164,11 +168,11 @@ is even more important than success at achieving your goals:\n\n
                     str: The AI's response.
                 """
 
-                cfg = Config()
-                system_msg = create_chat_message("system", self.gprompt)
-                lmessages = [system_msg]
-                current_tokens_used = count_message_tokens([system_msg], cfg.smart_llm_model)
+                system_msg = Message("system", self.gprompt)
+                lmessages = ChatSequence.for_model(model,[system_msg])
+                current_tokens_used = count_message_tokens([system_msg], model)
                 for imsg, message in enumerate(context_messages):
+                    message : dict[str, str]
                     if imsg == 0:
                         c_sys_msg_start = 'You are '
                         assert 'role' in message and message['role'] == 'system' and\
@@ -183,17 +187,18 @@ is even more important than success at achieving your goals:\n\n
                                 message['content'][:len(c_last_msg_start)] == c_last_msg_start,\
                                 'Error! AUto-GPT code has changed so that the last message is unexpected'
                         continue
-                    current_tokens_used += count_message_tokens([message], cfg.smart_llm_model)
-                    lmessages.append(message)
+                    model_message = Message(message['role'], message['content'])
+                    current_tokens_used += count_message_tokens([model_message], model)
+                    lmessages.append(model_message)
                 c_violation_report_start = 'Guidelines Violation'
-                prompt_msg = create_chat_message('user', 'Please do nothing other than check this history '\
+                prompt_msg = Message('user', 'Please do nothing other than check this history '\
                         'for guideline violations. If there are violations, start your response '\
                         f'with the words \"{c_violation_report_start}\" '\
                         'and if no violations are found, respond with the single word "continue".')
-                current_tokens_used += count_message_tokens([prompt_msg], cfg.smart_llm_model)
+                current_tokens_used += count_message_tokens([prompt_msg], model)
                 lmessages.append(prompt_msg)
                 # Calculate remaining tokens
-                tokens_remaining = cfg.smart_token_limit - current_tokens_used
+                tokens_remaining = token_limit - current_tokens_used
                 # assert tokens_remaining >= 0, "Tokens remaining is negative.
                 # This should never happen, please submit a bug report at
                 #  https://www.github.com/Torantulino/Auto-GPT"
@@ -204,18 +209,19 @@ is even more important than success at achieving your goals:\n\n
                 logger.debug(f"Guidelines Tokens remaining for response: {tokens_remaining}")
                 logger.debug("------------ CONTEXT SENT TO AI ---------------")
                 for message in lmessages:
+                    message : Message
                     # Skip printing the prompt
-                    if message["role"] == "system" and message["content"] == self.gprompt:
+                    if message.role == "system" and message.content == self.gprompt:
                         continue
-                    logger.debug(f"{message['role'].capitalize()}: {message['content']}")
+                    logger.debug(f"{message.role.capitalize()}: {message.content}")
                     logger.debug("")
                 logger.debug("----------- END OF CONTEXT ----------------")
 
                 # TODO: use a model defined elsewhere, so that model can contain
                 # temperature and other settings we care about
                 violation_reply = create_chat_completion(
-                    model=cfg.fast_llm_model,
-                    messages=lmessages,
+                    lmessages,
+                    model=model,
                     max_tokens=tokens_remaining,
                 )
 

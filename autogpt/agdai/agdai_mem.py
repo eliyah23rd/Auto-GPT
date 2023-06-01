@@ -9,7 +9,9 @@ import numpy as np
 import json
 import orjson
 
-from autogpt.llm import get_ada_embedding
+# from autogpt.llm.llm_utils import get_ada_embedding
+from autogpt.memory.vector.utils import Embedding, get_embedding
+
 # from autogpt.memory.base import MemoryProviderSingleton
 
 EMBED_DIM = 1536
@@ -266,7 +268,7 @@ class ClAgdaiMem(ClAgdaiStorage):
         # self.data, self.filename = init_file(utc_start, memtype)
 
 
-    def add(self, text: str):
+    def add(self, text: str) -> (tuple[int, int], Embedding):
         """
         Add text to our list of texts, add embedding as row to our
             embeddings-matrix
@@ -278,7 +280,7 @@ class ClAgdaiMem(ClAgdaiStorage):
         """
         self.data.texts.append(text)
 
-        embedding = get_ada_embedding(text)
+        embedding = get_embedding(text)
 
         vector = np.array(embedding).astype(np.float32)
         vector = vector[np.newaxis, :]
@@ -350,7 +352,7 @@ class ClAgdaiMem(ClAgdaiStorage):
 
         Returns: List[str]
         """
-        embedding = get_ada_embedding(text)
+        embedding = get_embedding(text)
 
         top_k_indices = self._get_topk(embedding, k)
 

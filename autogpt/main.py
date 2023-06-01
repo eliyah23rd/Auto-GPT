@@ -21,7 +21,6 @@ from autogpt.utils import (
 )
 from autogpt.workspace import Workspace
 from scripts.install_plugin_deps import install_plugin_dependencies
-from autogpt.ai_guidelines import AIGuidelines
 from autogpt.agdai.__init__ import ClAGDAI
 # from autogpt.telegram_plugin.__init__ import AutoGPTTelegram
 
@@ -200,6 +199,5 @@ def run_auto_gpt(
         system_prompt=system_prompt,
         triggering_prompt=DEFAULT_TRIGGERING_PROMPT,
         workspace_directory=workspace_directory,
-        # ai_guidelines=guidelines_mgr,
     )
     agent.start_interaction_loop()
