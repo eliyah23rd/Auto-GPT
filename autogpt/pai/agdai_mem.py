@@ -23,7 +23,7 @@ def create_default_embeddings():
 
 
 @dataclasses.dataclass
-class AgdaiCacheContent:
+class PAICacheContent:
     texts: List[str] = dataclasses.field(default_factory=list)
     embeddings: np.ndarray = dataclasses.field(
         default_factory=create_default_embeddings
@@ -33,21 +33,21 @@ class AgdaiCacheContent:
 
 
 @dataclasses.dataclass
-class AgdaiCacheRefs:
+class PAICacheRefs:
     refs: List[Tuple[Tuple[int, int], Tuple[int, int]]] = dataclasses.field(default_factory=list) # list of src->dest memids where each memid is (start, seqnum)
     seq_starts: Dict[str, int] = dataclasses.field(default_factory=dict)
     main_data_name: str = 'refs'
 
 
 @dataclasses.dataclass
-class AgdaiCacheVals:
+class PAICacheVals:
     vals: List[Tuple[Tuple[int, int], Any]] = dataclasses.field(default_factory=list) # list of src -> int vals where each src is a memid (start, seqnum)
     seq_starts: Dict[str, int] = dataclasses.field(default_factory=dict)
     main_data_name: str = 'vals'
 
 # def init_file(utc_start, memtype):
 
-class ClAgdaiStorage:
+class ClPAIStorage:
     def __init__(self, utc_start, memtype, filename_body) -> None:
         self._utc_start = str(utc_start)
         curr_dir = Path(__file__).parent
@@ -173,14 +173,14 @@ class ClAgdaiStorage:
         return lret
 
 
-class ClAgdaiVals(ClAgdaiStorage):
+class ClPAIVals(ClPAIStorage):
     """A class that stores key,val pairs in a local json file"""
 
     def __init__(self, utc_start, filename_body, val_type=None) -> None:
-        super().__init__(utc_start, AgdaiCacheVals, filename_body)
+        super().__init__(utc_start, PAICacheVals, filename_body)
         self.data.vals = [(tuple(key), tuple(val) if val_type == 'tuple' else val) for key, val in self.data.vals]
         self._d_lkp = {val[0]:idx for idx, val in enumerate(self.data.vals)}
-        assert len(self._d_lkp) == self.get_numrecs(), 'Error, ClAgdaiVals may not include repeated key'
+        assert len(self._d_lkp) == self.get_numrecs(), 'Error, ClPAIVals may not include repeated key'
 
     def add(self, mem_with_score: Tuple[Tuple[int, int], Any]):
         """
@@ -192,7 +192,7 @@ class ClAgdaiVals(ClAgdaiStorage):
         Returns: None
         """
         key = mem_with_score[0]
-        assert self._d_lkp.get(key, None) is None, 'Error, ClAgdaiVals may not include repeated key'
+        assert self._d_lkp.get(key, None) is None, 'Error, ClPAIVals may not include repeated key'
         self._d_lkp[key] = self.get_numrecs()
         self.data.vals.append(mem_with_score)
         # self._incr_numrecs()
@@ -220,11 +220,11 @@ class ClAgdaiVals(ClAgdaiStorage):
         return len(self.data.vals)
 
 
-class ClAgdaiRefs(ClAgdaiStorage):
+class ClPAIRefs(ClPAIStorage):
     """A class that stores ref pairs in a local json file"""
 
     def __init__(self, utc_start, filename_body) -> None:
-        super().__init__(utc_start, AgdaiCacheRefs, filename_body)
+        super().__init__(utc_start, PAICacheRefs, filename_body)
 
     def add(self, ref_pair: Tuple[Tuple[int, int], Tuple[int, int]]):
         """
@@ -251,7 +251,7 @@ class ClAgdaiRefs(ClAgdaiStorage):
         return len(self.data.refs)
 
 
-class ClAgdaiMem(ClAgdaiStorage):
+class ClPAIMem(ClPAIStorage):
     """A class that stores text plus embeddings in a local json file"""
 
     def __init__(self, utc_start, filename_body) -> None:
@@ -264,7 +264,7 @@ class ClAgdaiMem(ClAgdaiStorage):
         Returns:
             None
         """
-        super().__init__(utc_start, AgdaiCacheContent, filename_body)
+        super().__init__(utc_start, PAICacheContent, filename_body)
         # self.data, self.filename = init_file(utc_start, memtype)
 
 
@@ -303,7 +303,7 @@ class ClAgdaiMem(ClAgdaiStorage):
 
         Returns: A message indicating that the memory has been cleared.
         """
-        self.data = AgdaiCacheContent()
+        self.data = PAICacheContent()
         return "Obliviated"
 
     def get_text(self, memid) -> str:

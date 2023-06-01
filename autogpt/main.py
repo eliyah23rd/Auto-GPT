@@ -21,7 +21,7 @@ from autogpt.utils import (
 )
 from autogpt.workspace import Workspace
 from scripts.install_plugin_deps import install_plugin_dependencies
-from autogpt.agdai.__init__ import ClAGDAI
+from autogpt.pai.__init__ import ClPAI
 # from autogpt.telegram_plugin.__init__ import AutoGPTTelegram
 
 COMMAND_CATEGORIES = [
@@ -142,7 +142,7 @@ def run_auto_gpt(
     cfg.file_logger_path = str(file_logger_path)
 
     cfg.set_plugins(scan_plugins(cfg, cfg.debug_mode))
-    cfg.plugins.append(ClAGDAI())
+    cfg.plugins.append(ClPAI())
     # cfg.plugins.append(AutoGPTTelegram())
     # guidelines_mgr = AIGuidelines(cfg.ai_guidelines_file)
 

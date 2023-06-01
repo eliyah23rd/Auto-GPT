@@ -2,8 +2,8 @@
 from typing import Any, Dict, List, Optional, Tuple, TypedDict, TypeVar
 
 from auto_gpt_plugin_template import AutoGPTPluginTemplate
-from .agdai import _agdai_find_similar, _agdai_msg_user
-from .agdai_data import ClAgdaiData
+from .agdai import _pai_find_similar, _pai_msg_user
+from .agdai_data import ClPAIData
 
 PromptGenerator = TypeVar("PromptGenerator")
 
@@ -13,14 +13,14 @@ class Message(TypedDict):
     content: str
 
 
-class ClAGDAI(AutoGPTPluginTemplate):
+class ClPAI(AutoGPTPluginTemplate):
 
     def __init__(self):
         super().__init__()
-        self._name = "AGDAI"
+        self._name = "PAI"
         self._version = "0.1.0"
-        self._description = "Autonamous Guidelines Driven AI"
-        self._data = ClAgdaiData()
+        self._description = "Personal AI"
+        self._data = ClPAIData()
 
     def can_handle_on_response(self) -> bool:
         """This method is called to check that the plugin can
@@ -211,13 +211,13 @@ class ClAGDAI(AutoGPTPluginTemplate):
             "find_similar",
             "Find similar memories that succeeded in the past. ",
             {"memory": "<memory_like_this>"},
-            _agdai_find_similar,
+            _pai_find_similar,
         )
         prompt.add_command(
             'telegram_message_user',
             'Message user',
             {"message": "<message_to_send>"},
-            _agdai_msg_user,
+            _pai_msg_user,
         )
         return prompt
 

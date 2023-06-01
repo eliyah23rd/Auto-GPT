@@ -14,9 +14,9 @@ from autogpt.logs import logger
 from autogpt.ai_guidelines import AIGuidelines
 from autogpt.llm.utils import create_chat_completion
 from autogpt.llm.base import ChatSequence, Message
-from .agdai_mem import ClAgdaiMem, ClAgdaiVals
+from .agdai_mem import ClPAIMem, ClPAIVals
 from .telegram_chat import TelegramUtils
-class ClAgdaiData(AbstractSingleton):
+class ClPAIData(AbstractSingleton):
     def __init__(self) -> None:
         super().__init__()
         cfg = Config()
@@ -24,15 +24,15 @@ class ClAgdaiData(AbstractSingleton):
         self._utc_start = int(time.time())
         self._guidelines_mgr = AIGuidelines(cfg.ai_guidelines_file)
         self._seqnum = 0
-        self._contexts = ClAgdaiMem(self._utc_start, 'contexts')
-        self._actions = ClAgdaiMem(self._utc_start, 'actions')
-        self._advice = ClAgdaiMem(self._utc_start, 'advice')
-        self._response_refs = ClAgdaiVals(self._utc_start, 'respose_refs', val_type='tuple') #Note. Not using refs but rather the generic vals
-        self._action_scores = ClAgdaiVals(self._utc_start, 'action_scores')
-        self._advice_refs = ClAgdaiVals(self._utc_start, 'advice_refs', val_type='tuple')
-        self._advice_scores = ClAgdaiVals(self._utc_start, 'advice_scores', val_type='float')
-        self._advice_source = ClAgdaiVals(self._utc_start, 'advice_source', val_type='str')
-        self._helpful_hints = ClAgdaiVals(self._utc_start, 'helpful_hints', val_type='str')
+        self._contexts = ClPAIMem(self._utc_start, 'contexts')
+        self._actions = ClPAIMem(self._utc_start, 'actions')
+        self._advice = ClPAIMem(self._utc_start, 'advice')
+        self._response_refs = ClPAIVals(self._utc_start, 'respose_refs', val_type='tuple') #Note. Not using refs but rather the generic vals
+        self._action_scores = ClPAIVals(self._utc_start, 'action_scores')
+        self._advice_refs = ClPAIVals(self._utc_start, 'advice_refs', val_type='tuple')
+        self._advice_scores = ClPAIVals(self._utc_start, 'advice_scores', val_type='float')
+        self._advice_source = ClPAIVals(self._utc_start, 'advice_source', val_type='str')
+        self._helpful_hints = ClPAIVals(self._utc_start, 'helpful_hints', val_type='str')
         self._telegram_api_key = os.getenv("TELEGRAM_API_KEY")
         self._telegram_chat_id = os.getenv("TELEGRAM_CHAT_ID")
         self._telegram_utils = TelegramUtils(
