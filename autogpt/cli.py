@@ -65,11 +65,11 @@ import click
     is_flag=True,
     help="Installs external dependencies for 3rd party plugins.",
 )
-@click.option(
-    "--pai",
-    is_flag=True,
-    help="Runs the pai program flow insted of vanilla.",
-)
+# @click.option(
+#     "--pai",
+#     is_flag=True,
+#     help="Runs the pai program flow insted of vanilla.",
+# )
 @click.pass_context
 def main(
     ctx: click.Context,
