@@ -40,7 +40,15 @@ class ClPAIData(AbstractSingleton):
                 [   ('score', 'send agent a score -10 -> 10 to express satisfaction'),
                     ('score_1', 'send agent a score -10 -> 10 to express your opinion about last action only'),
                     ('advice', 'send agent advice as to how to proceed'),
-                    ('history', 'ask agent for data <n> cycles back. Prints context, action, price and score')])
+                    ('history', 'ask agent for data <n> cycles back. Prints context, action, price and score'),
+                    ('pause', 'tells agent to pause before the next GPT iteration. Will not continue until given advice or unpaused'),
+                    ('unpause', 'unpaused agent after pause, resumes the interaction with underlying GPT engine'),
+                    ('intervene', 'after an action is selected by GPT check if user wants to override. Maintains this state till flow command'),
+                    ('flow', 'if in intervene state, returns to GPT selected action'),
+                    ('ask', 'asks the agent a question'),
+                    ])
+        self._bintervene = False # When switched to True by the /intervene command, allows user to replace GPT response
+        self._b_last_fixed = True # If there is not an uninterrupted sequence of fixed, new fixes are not allowed
         self.init_bot()
         self.msg_user('System initialized')
 
@@ -53,11 +61,15 @@ class ClPAIData(AbstractSingleton):
         self._telegram_utils.ignore_old_updates()
 
     class UserCmd(Enum):
-        eScore = 1
-        eAdvice = 2
-        eGetHistory = 3
-        eFreeForm = 4
-        eScore_1 = 5
+        eScore                  = 1
+        eAdvice                 = 2
+        eGetHistory             = 3
+        eFreeForm               = 4
+        eScore_1                = 5
+        ePause                  = 6
+        eContinueAfterPause     = 7
+        eIntervene              = 8
+        eFlow                   = 9
 
     def parse_user_msg(self, user_str):
         pattern = r"^/score_?1?\s+(-?\d+)"
@@ -83,6 +95,22 @@ class ClPAIData(AbstractSingleton):
                 return self.UserCmd.eGetHistory, int(match.group(1))
             else:
                 return self.UserCmd.eGetHistory, 0
+        pattern = r"/pause\s*$"
+        match = re.search(pattern, user_str, re.IGNORECASE)
+        if match:
+            return self.UserCmd.ePause, ''
+        pattern = r"/unpause\s*$"
+        match = re.search(pattern, user_str, re.IGNORECASE)
+        if match:
+            return self.UserCmd.eContinueAfterPause, ''
+        pattern = r"/intervene\s*$"
+        match = re.search(pattern, user_str, re.IGNORECASE)
+        if match:
+            return self.UserCmd.eIntervene, ''
+        pattern = r"/flow\s*$"
+        match = re.search(pattern, user_str, re.IGNORECASE)
+        if match:
+            return self.UserCmd.eFlow, ''
         return self.UserCmd.eFreeForm, user_str
 
     c_mem_tightness = 0.1 # TBD Make configurable
@@ -122,14 +150,14 @@ class ClPAIData(AbstractSingleton):
         diff_messages = ChatSequence.for_model(
             cfg.fast_llm_model,
             [
-                {
-                    "role": "system",
-                    "content": sys_prompt,
-                },
-                {
-                    "role": "user",
-                    "content": user_prompt,
-                }
+                Message(
+                    "system",
+                    sys_prompt,
+                ),
+                Message(
+                    "user",
+                    user_prompt,
+                ),
             ]
         )
         diff_response = create_chat_completion(diff_messages, cfg.fast_llm_model)
@@ -281,18 +309,65 @@ I must make sure I use the json format specified above for my response.
 
         
 
-    def process_actions(self, gpt_response : str) -> str:
+    def process_actions(self, gpt_response_json : str) -> str:
         '''
-        Currently does nothing other than store the GPT response
-        Future versions may compare to guidelines or apply some other processing.
+        If we are not in the intervene state do nothing other than store the GPT response
+        Future versions may compare with guidelines or apply some other processing.
+        If we are in the intervene state we start a conversation with the user
+            that will let them replace the GPT answer with their own
         Return value is the response that we want app to run with
         '''
-        gpt_response_json = json.dumps(gpt_response) # TBD is the argument a string?
-        last_action_memid, _ = self._actions.add(gpt_response_json)
-        last_context_memid = self._contexts.get_last_memid()
-        self._response_refs.add((last_context_memid, last_action_memid))
-        self._action_scores.add((last_action_memid, None)) # NB None and not zero for action score
-        return gpt_response
+        # gpt_response_json : str = json.dumps(gpt_response)
+        baccept = True
+        if self._bintervene:
+            baccept = False
+            self.msg_user('LLM made the following response:')
+            self.msg_user(gpt_response_json)
+            self.msg_user('Please type \'y\' if you want to accept this or \'n\' to change it')
+            while True:
+                y_or_n_str = self._telegram_utils.check_for_user_input(bblock=True)
+                if y_or_n_str.lower().strip() == 'y':
+                    baccept = True
+                    break
+                elif y_or_n_str.lower().strip() == 'n':
+                    break
+                else:
+                    self.msg_user('I\'m sorry, please type \'y\' if you want to accept this or \'n\' to change it')
+            if not baccept:
+                json_str = '{"thoughts": {"text": "", "reasoning": "", "plan": "", "criticism": "", "speak": ""}, ' \
+                        + '"command": {"name": "' # cmd_str", "args": {"filename": "sample.txt"}}}'
+                self.msg_user('Please enter the command name.')
+                cmd_str = self._telegram_utils.check_for_user_input(bblock=True)
+                json_str += cmd_str.strip() + '", "args": {"'
+                b_first_arg = True
+                while True:
+                    self.msg_user('Please enter the name of the next argument or type \'end\' if there are no more arguments.')
+                    arg_name = self._telegram_utils.check_for_user_input(bblock=True)
+                    if len(arg_name) < 1 or arg_name.lower().strip() == 'end':
+                        break
+                    if b_first_arg:
+                        b_first_arg = False
+                    else:
+                        json_str += ', '
+                    arg_name = arg_name.strip()
+                    json_str += arg_name + '": "'
+                    self.msg_user(f'Please enter the value for arg \'{arg_name}\'.')
+                    arg_val = self._telegram_utils.check_for_user_input(bblock=True)
+                    json_str += arg_val.strip() + '"'
+                json_str += '}}}'
+                gpt_response_json = json_str.replace('\n', '\\n')
+                # gpt_response = json.loads(gpt_response_json)
+                baccept = True
+
+        if baccept:
+            last_action_memid, _ = self._actions.add(gpt_response_json)
+            last_context_memid = self._contexts.get_last_memid()
+            self._response_refs.add((last_context_memid, last_action_memid))
+            self._action_scores.add((last_action_memid, None)) # NB None and not zero for action score
+            self._b_last_fixed = False
+            return gpt_response_json
+        
+        assert False, 'logic should not reach here'
     
     def store_advice(self, advice : str, source : str) -> None:
         '''
@@ -347,25 +422,36 @@ I must make sure I use the json format specified above for my response.
         context_as_str = '\n'.join([f'{key} {value}' for message_dict in messages \
                                     for key, value in message_dict.items()])
         _, context_embedding = self._contexts.add(context_as_str)
-        user_message = self._telegram_utils.check_for_user_input()
-        if len(user_message) > 0:
-            msg_type, content = self.parse_user_msg(user_message)
-            if msg_type == self.UserCmd.eGetHistory:
-                self.get_history(content)
-                return ''
-            elif msg_type == self.UserCmd.eScore:
-                self.apply_scores(0, 10, content)
-                # return ''
-            elif msg_type == self.UserCmd.eScore_1:
-                self.apply_scores(0, 1, content)
-                # return ''
-            elif msg_type == self.UserCmd.eAdvice:
-                self.store_advice(content, 'user')
-                return f'Your user has requested that you use the following advice in deciding on your future responses: {content}'
-            elif msg_type == self.UserCmd.eFreeForm:
-                return f'Your user has sent you the following message: {content}\n\
-Use the command "telegram_message_user" from the COMMANDS list if you wish to reply.\n\
-Ensure your response uses the JSON format specified above.'
+        bpaused = False
+        while True:
+            user_message = self._telegram_utils.check_for_user_input()
+            if len(user_message) > 0:
+                msg_type, content = self.parse_user_msg(user_message) put into parse and process function
+                if msg_type == self.UserCmd.eGetHistory:
+                    self.get_history(content)
+                elif msg_type == self.UserCmd.eScore:
+                    self.apply_scores(0, 10, content)
+                elif msg_type == self.UserCmd.eScore_1:
+                    self.apply_scores(0, 1, content)
+                elif msg_type == self.UserCmd.eIntervene:
+                    self._bintervene = True
+                elif msg_type == self.UserCmd.eFlow:
+                    self._bintervene = False
+                elif msg_type == self.UserCmd.ePause:
+                    bpaused = True
+                elif msg_type == self.UserCmd.eContinueAfterPause:
+                    bpaused = False
+                elif msg_type == self.UserCmd.eAdvice:
+                    self.store_advice(content, 'user')
+                    return f'Your user has requested that you use the following advice in deciding on your future responses: {content}'
+                elif msg_type == self.UserCmd.eFreeForm:
+                    return f'Your user has sent you the following message: {content}\n'\
+                        'Use the command "telegram_message_user" from the COMMANDS list if you wish to reply.\n'\
+                        'Ensure your response uses the JSON format specified above.'
+            if not bpaused:
+                break
+            time.sleep(2)
+                
 
         if self._contexts.get_numrecs() > 3:
             hint_text = self.create_helpful_input(context_as_str, context_embedding)

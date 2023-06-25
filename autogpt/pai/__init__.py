@@ -27,13 +27,13 @@ class ClPAI(AutoGPTPluginTemplate):
         handle the on_response method.
         Returns:
             bool: True if the plugin can handle the on_response method."""
-        return False
+        return True
 
     def on_response(self, response: str, *args, **kwargs) -> str:
         """This method is called when a response is received from the model.
         This is called for any call to GPT not only the chat_with_ai() in the main
         loop start_interaction_loop()"""
-        pass
+        return self._data.process_actions(response)
 
 
     def can_handle_post_prompt(self) -> bool:
@@ -66,7 +66,7 @@ class ClPAI(AutoGPTPluginTemplate):
         handle the post_planning method. 
         Returns:
             bool: True if the plugin can handle the post_planning method."""
-        return True
+        return False # True
 
     def post_planning(self, response: str) -> str:
         """This method is called after the planning chat completion is done. The respose is the return from GPT with thoughts strategies etc. Can be used to belay unethical commands
@@ -75,7 +75,7 @@ class ClPAI(AutoGPTPluginTemplate):
         Returns:
             str: The resulting response.
         """
-        return self._data.process_actions(response)
+        pass # return self._data.process_actions(response)
 
     def can_handle_pre_instruction(self) -> bool:
         """This method is called to check that the plugin can

@@ -253,28 +253,33 @@ class TelegramUtils():
                     resposes += update.message.text + '\n'
             self._last_update_id = max(last_update_id, update.update_id)
         return resposes
-    
+
 
 
     async def _user_check_async(self):
         print("Waiting for response on Telegram chat...")
-        return await self._single_poll()
+        ret =  await self._single_poll() 
+        print("Completed wait for response on Telegram chat...")
+        return ret
 
-    def check_for_user_input(self, num_tries=0):
+    def check_for_user_input(self, bblock = False, num_tries=0):
         print("Checking for messages from user")
         try:
             loop = asyncio.get_running_loop()
         except RuntimeError:  # 'RuntimeError: There is no current event loop...'
             loop = None
         try:
-            if loop and loop.is_running():
-                return loop.create_task(self._user_check_async())
-            else:
-                return asyncio.run(self._user_check_async())
+            while True:
+                if loop and loop.is_running():
+                    ret = loop.create_task(self._user_check_async())
+                else:
+                    ret = asyncio.run(self._user_check_async())
+                if not bblock or len(ret) > 0:
+                    return ret
         except TimedOut:
             if num_tries < 3:
                 print("Telegram timeout error, trying again...")
-                return self.check_for_user_input(num_tries+1)
+                return self.check_for_user_input(bblock, num_tries+1)
             else:
                 print('Failed to access telegram messages')
                 return ''
