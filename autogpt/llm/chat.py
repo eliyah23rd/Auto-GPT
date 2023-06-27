@@ -161,7 +161,8 @@ def chat_with_ai(
             logger.debug(f"Plugin response too long, skipping: {plugin_response}")
             logger.debug(f"Plugins remaining at stop: {plugin_count - i}")
             break
-        message_sequence.add("system", plugin_response)
+        message_sequence.add("system", plugin_response)  
+        current_tokens_used += tokens_to_add
     # Calculate remaining tokens
     tokens_remaining = token_limit - current_tokens_used
     # assert tokens_remaining >= 0, "Tokens remaining is negative.

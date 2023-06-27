@@ -49,6 +49,7 @@ class ClPAIData(AbstractSingleton):
                     ])
         self._bintervene = False # When switched to True by the /intervene command, allows user to replace GPT response
         self._b_last_fixed = True # If there is not an uninterrupted sequence of fixed, new fixes are not allowed
+        self._b_action_response = False # must be set to True before any calls to modules that are making mainstream calls to the LLM and reset afterwards
         self.init_bot()
         self.msg_user('System initialized')
 
@@ -318,6 +319,13 @@ I must make sure I use the json format specified above for my response.
         Return value is the response that we want app to run with
         '''
         # gpt_response_json : str = json.dumps(gpt_response)
+
+        # before anything else, make sure that this is called by an on_respose from a 
+        #   mainstream LLM call (not a guidelines or summary call)
+        if not self._b_action_response:
+            return gpt_response_json
+        
+        self._b_action_response = False
         baccept = True
         if self._bintervene:
             baccept = False
@@ -426,7 +434,7 @@ I must make sure I use the json format specified above for my response.
         while True:
             user_message = self._telegram_utils.check_for_user_input()
             if len(user_message) > 0:
-                msg_type, content = self.parse_user_msg(user_message) put into parse and process function
+                msg_type, content = self.parse_user_msg(user_message)
                 if msg_type == self.UserCmd.eGetHistory:
                     self.get_history(content)
                 elif msg_type == self.UserCmd.eScore:
@@ -452,15 +460,16 @@ I must make sure I use the json format specified above for my response.
                 break
             time.sleep(2)
                 
-
+        ret_text = ''
         if self._contexts.get_numrecs() > 3:
             hint_text = self.create_helpful_input(context_as_str, context_embedding)
             if len(hint_text) > 3:
                 # logger.typewriter_log('HINT:', Fore.YELLOW, f"\n\n\n{hint_text}")
                 print(f'HINT:\n\n\n{hint_text}')
-                return hint_text
+                ret_text = hint_text
 
-        return ''
+        self._b_action_response = True
+        return ret_text
 
 
 
