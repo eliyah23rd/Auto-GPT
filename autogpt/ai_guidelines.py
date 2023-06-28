@@ -11,6 +11,7 @@ from autogpt.config import Config
 from autogpt.logs import logger
 from autogpt.llm.utils import count_message_tokens, create_chat_completion
 from autogpt.llm.base import ChatSequence, Message
+from autogpt.llm.providers.openai import OPEN_AI_CHAT_MODELS
 
 def create_chat_message(role, content):
     """
@@ -144,16 +145,16 @@ is even more important than success at achieving your goals:\n\n
         return full_prompt
 
 
-    def exec_monitor(self, context_messages : list[dict[str, str]], model: str | None = None):
+    def exec_monitor(self, config, context_messages : list[dict[str, str]], model: str | None = None):
         """Interact with the OpenAI API, sending the prompt, user input, message history,
         and permanent memory."""
         if self.bsilent:
             return 'continue'
 
-        config = Config()
+        # config = Config()
         if model is None:
             model = config.fast_llm_model
-            token_limit = config.fast_token_limit
+        token_limit = OPEN_AI_CHAT_MODELS.get(model).max_tokens
         while True:
             try:
                 """
@@ -181,7 +182,7 @@ is even more important than success at achieving your goals:\n\n
                                 'Error! AUto-GPT code has changed so that the initial message is unexpected'
                         continue
                     elif imsg == len(context_messages) - 1:
-                        c_last_msg_start = 'Determine which next command '
+                        c_last_msg_start = 'Determine exactly'
                         assert 'role' in message and message['role'] == 'user' and\
                                 'content' in message and \
                                 message['content'][:len(c_last_msg_start)] == c_last_msg_start,\
@@ -220,15 +221,16 @@ is even more important than success at achieving your goals:\n\n
                 # TODO: use a model defined elsewhere, so that model can contain
                 # temperature and other settings we care about
                 violation_reply = create_chat_completion(
-                    lmessages,
+                    prompt=lmessages,
+                    config=config,
                     model=model,
                     max_tokens=tokens_remaining,
                 )
 
-                if violation_reply.strip().lower() == "continue":
+                if violation_reply.content.strip().lower() == "continue":
                     return False, "continue"
 
-                if violation_reply[:len(c_violation_report_start)].lower() != c_violation_report_start.lower():
+                if violation_reply.content[:len(c_violation_report_start)].lower() != c_violation_report_start.lower():
                     logger.typewriter_log('Badly formatted guideline violation.')
                     return False, 'Badly formatted response'
                 # Update full message history and permanent memory

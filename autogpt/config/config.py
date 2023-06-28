@@ -79,6 +79,7 @@ class ConfigSettings(SystemSettings):
     elevenlabs_voice_id: Optional[str]
     plugins: list[str]
     authorise_key: str
+    ai_guidelines_file: str
 
 
 class Config(Configurable):
@@ -147,6 +148,7 @@ class Config(Configurable):
         plugins=[],
         authorise_key="y",
         redis_password="",
+        ai_guidelines_file="ai_guidelines.yaml"
     )
 
     @classmethod
@@ -196,6 +198,7 @@ class Config(Configurable):
             "plugins_dir": os.getenv("PLUGINS_DIR"),
             "plugins_config_file": os.getenv("PLUGINS_CONFIG_FILE"),
             "chat_messages_enabled": os.getenv("CHAT_MESSAGES_ENABLED") == "True",
+            "ai_guidelines_file": os.getenv("AI_GUIDELINES_FILE", "ai_guidelines.yaml")
         }
 
         # Converting to a list from comma-separated string
@@ -218,7 +221,7 @@ class Config(Configurable):
             "GOOGLE_CUSTOM_SEARCH_ENGINE_ID", os.getenv("CUSTOM_SEARCH_ENGINE_ID")
         )
 
-        self.ai_guidelines_file = os.getenv("AI_GUIDELINES_FILE", "ai_guidelines.yaml")
+        
         config_dict["elevenlabs_voice_id"] = os.getenv(
             "ELEVENLABS_VOICE_ID", os.getenv("ELEVENLABS_VOICE_1_ID")
         )

@@ -124,7 +124,6 @@ def run_auto_gpt(
     Workspace.build_file_logger_path(config, workspace_directory)
 
     config.plugins = scan_plugins(config, config.debug_mode)
-    config.plugins.append(ClPAI())
     # Create a CommandRegistry instance and scan default folder
     command_registry = CommandRegistry()
 
@@ -147,6 +146,8 @@ def run_auto_gpt(
     ai_config.command_registry = command_registry
     if ai_config.ai_name:
         ai_name = ai_config.ai_name
+
+    config.plugins.append(ClPAI(config, ai_config))
     # print(prompt)
     # Initialize variables
     next_action_count = 0

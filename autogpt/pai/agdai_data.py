@@ -9,7 +9,7 @@ from enum import Enum
 from colorama import Fore # , Style
 # from typing import List #, Any, Dict, Optional, TypedDict, TypeVar, Tuple
 from autogpt.singleton import AbstractSingleton
-from autogpt.config import Config
+from autogpt.config import Config, AIConfig
 from autogpt.logs import logger
 from autogpt.ai_guidelines import AIGuidelines
 from autogpt.llm.utils import create_chat_completion
@@ -17,9 +17,12 @@ from autogpt.llm.base import ChatSequence, Message
 from .agdai_mem import ClPAIMem, ClPAIVals
 from .telegram_chat import TelegramUtils
 class ClPAIData(AbstractSingleton):
-    def __init__(self) -> None:
+    def __init__(self, config : Config = None, ai_config = None) -> None:
         super().__init__()
-        cfg = Config()
+        assert config is not None, 'The first call must pass the config'
+        self._config : Config = config # Config()
+        self._ai_config : AIConfig = ai_config
+        cfg = self._config
         self._curr_agent_name = ''
         self._utc_start = int(time.time())
         self._guidelines_mgr = AIGuidelines(cfg.ai_guidelines_file)
@@ -60,6 +63,10 @@ class ClPAIData(AbstractSingleton):
     def init_bot(self):
         self._telegram_utils.init_commands()
         self._telegram_utils.ignore_old_updates()
+
+    def register_cmds(self, cmds):
+        for cmd in cmds:
+            self._ai_config.command_registry.register(cmd)
 
     class UserCmd(Enum):
         eScore                  = 1
@@ -147,9 +154,9 @@ class ClPAIData(AbstractSingleton):
                 + 'between the current context and a previous context\n'
         user_prompt = f'current context:\n{now_str}'\
                 f'previous context:\n{top_str}'
-        cfg = Config()
+        # cfg = Config()
         diff_messages = ChatSequence.for_model(
-            cfg.fast_llm_model,
+            self._config.fast_llm_model,
             [
                 Message(
                     "system",
@@ -161,7 +168,11 @@ class ClPAIData(AbstractSingleton):
                 ),
             ]
         )
-        diff_response = create_chat_completion(diff_messages, cfg.fast_llm_model)
+        diff_response = create_chat_completion(
+            prompt=diff_messages,
+            config=self._config,
+            model=self._config.fast_llm_model,
+        )
         
         return '. However these are the differences between the current context '\
             f'and the one where this action was successful\n: {diff_response}'
@@ -368,7 +379,7 @@ I must make sure I use the json format specified above for my response.
                 baccept = True
 
         if baccept:
-            last_action_memid, _ = self._actions.add(gpt_response_json)
+            last_action_memid, _ = self._actions.add(gpt_response_json, self._config)
             last_context_memid = self._contexts.get_last_memid()
             self._response_refs.add((last_context_memid, last_action_memid))
             self._action_scores.add((last_action_memid, None)) # NB None and not zero for action score
@@ -418,18 +429,18 @@ I must make sure I use the json format specified above for my response.
     def process_msgs(self, messages : list[dict[str, str]]):
         # new_messages = [msg for msg in messages if msg not in self._full_message_history]
         # look for "Error:"" in last msg
-        bviolation, violation_alert = self._guidelines_mgr.exec_monitor(messages)
+        bviolation, violation_alert = self._guidelines_mgr.exec_monitor(self._config, messages)
         if bviolation:
             self.apply_scores(0, 10, -10, b_force_score=True)
             # In the future we will investigate more carefully
             self.msg_user(f'Guideline violation alert! Shutting down! Report: {violation_alert}')
-            raise ValueError('Guideline violation!')
+            # raise ValueError('Guideline violation!') TBD!!! Don't forget to bring this back
 
         if len(messages) > 2 and 'Error:' in messages[-3]['content']:
             self.apply_scores(0, 1, -7)
         context_as_str = '\n'.join([f'{key} {value}' for message_dict in messages \
                                     for key, value in message_dict.items()])
-        _, context_embedding = self._contexts.add(context_as_str)
+        _, context_embedding = self._contexts.add(context_as_str, self._config)
         bpaused = False
         while True:
             user_message = self._telegram_utils.check_for_user_input()

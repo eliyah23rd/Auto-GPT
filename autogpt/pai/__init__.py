@@ -2,6 +2,8 @@
 from typing import Any, Dict, List, Optional, Tuple, TypedDict, TypeVar
 
 from auto_gpt_plugin_template import AutoGPTPluginTemplate
+from autogpt.models.command import Command
+from autogpt.models.command_parameter import CommandParameter
 from .agdai import _pai_find_similar, _pai_msg_user
 from .agdai_data import ClPAIData
 
@@ -15,12 +17,12 @@ class Message(TypedDict):
 
 class ClPAI(AutoGPTPluginTemplate):
 
-    def __init__(self):
+    def __init__(self, config, ai_config):
         super().__init__()
         self._name = "PAI"
         self._version = "0.1.0"
         self._description = "Personal AI"
-        self._data = ClPAIData()
+        self._data = ClPAIData(config, ai_config)
 
     def can_handle_on_response(self) -> bool:
         """This method is called to check that the plugin can
@@ -207,6 +209,12 @@ class ClPAI(AutoGPTPluginTemplate):
         """
 
         self._data.set_agent_name(prompt.name)
+        cmds = [Command('telegram_message_user',
+            'Message user',
+            _pai_msg_user,
+            [CommandParameter("message", "string", description="message_to_send", required=True)]
+        )]
+        self._data.register_cmds(cmds)
         prompt.add_command(
             "find_similar",
             "Find similar memories that succeeded in the past. ",

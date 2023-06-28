@@ -81,6 +81,11 @@ class Agent:
         self.created_at = datetime.now().strftime("%Y%m%d_%H%M%S")
         self.cycle_count = 0
         self.log_cycle_handler = LogCycleHandler()
+        # self.fast_token_limit = 3500 # TBD!!! Figure out why thisis missing
+        self.fast_token_limit = OPEN_AI_CHAT_MODELS.get(
+            config.fast_llm_model
+        ).max_tokens
+
 
     def start_interaction_loop(self):
         # Avoid circular imports

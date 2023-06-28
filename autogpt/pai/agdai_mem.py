@@ -11,6 +11,7 @@ import orjson
 
 # from autogpt.llm.llm_utils import get_ada_embedding
 from autogpt.memory.vector.utils import Embedding, get_embedding
+from autogpt.config import Config
 
 # from autogpt.memory.base import MemoryProviderSingleton
 
@@ -268,7 +269,7 @@ class ClPAIMem(ClPAIStorage):
         # self.data, self.filename = init_file(utc_start, memtype)
 
 
-    def add(self, text: str) -> (tuple[int, int], Embedding):
+    def add(self, text: str, config : Config) -> (tuple[int, int], Embedding):
         """
         Add text to our list of texts, add embedding as row to our
             embeddings-matrix
@@ -280,7 +281,7 @@ class ClPAIMem(ClPAIStorage):
         """
         self.data.texts.append(text)
 
-        embedding = get_embedding(text)
+        embedding = get_embedding(text, config)
 
         vector = np.array(embedding).astype(np.float32)
         vector = vector[np.newaxis, :]
