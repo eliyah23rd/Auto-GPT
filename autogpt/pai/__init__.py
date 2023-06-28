@@ -4,7 +4,7 @@ from typing import Any, Dict, List, Optional, Tuple, TypedDict, TypeVar
 from auto_gpt_plugin_template import AutoGPTPluginTemplate
 from autogpt.models.command import Command
 from autogpt.models.command_parameter import CommandParameter
-from .agdai import _pai_find_similar, _pai_msg_user
+from .pai import _pai_find_similar, _pai_msg_user
 from .agdai_data import ClPAIData
 
 PromptGenerator = TypeVar("PromptGenerator")
