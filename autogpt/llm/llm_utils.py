@@ -180,9 +180,13 @@ def create_chat_completion(
                     + f"You can read more here: {Fore.CYAN}https://docs.agpt.co/setup/#getting-an-api-key{Fore.RESET}"
                 )
                 warned_user = True
-        except (APIError, Timeout) as e:
-            if e.http_status != 502:
-                raise
+        # except (APIError, Timeout) as e:
+        #     if e.http_status != 502:
+        #         raise
+        #     if attempt == num_retries - 1:
+        #         raise
+        except APIError as apie:
+            print(f'Explain this error: {apie._message}')
             if attempt == num_retries - 1:
                 raise
         logger.debug(

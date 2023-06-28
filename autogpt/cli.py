@@ -16,6 +16,11 @@ import click
     help="Specifies which ai_settings.yaml file to use, will also automatically skip the re-prompt.",
 )
 @click.option(
+    "--prompt-settings",
+    "-P",
+    help="Specifies which prompt_settings.yaml file to use.",
+)
+@click.option(
     "-l",
     "--continuous-limit",
     type=int,
@@ -60,12 +65,18 @@ import click
     is_flag=True,
     help="Installs external dependencies for 3rd party plugins.",
 )
+# @click.option(
+#     "--pai",
+#     is_flag=True,
+#     help="Runs the pai program flow insted of vanilla.",
+# )
 @click.pass_context
 def main(
     ctx: click.Context,
     continuous: bool,
     continuous_limit: int,
     ai_settings: str,
+    prompt_settings: str,
     skip_reprompt: bool,
     speak: bool,
     debug: bool,
@@ -91,6 +102,7 @@ def main(
             continuous,
             continuous_limit,
             ai_settings,
+            prompt_settings,
             skip_reprompt,
             speak,
             debug,
