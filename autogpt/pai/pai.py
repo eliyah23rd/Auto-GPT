@@ -2,7 +2,7 @@
 # from typing import Any, Dict, List, Optional, Tuple, TypedDict, TypeVar
 
 from autogpt.agent.agent import Agent
-from .agdai_data import ClPAIData
+from .pai_data import ClPAIData
 
 def _pai_find_similar(memory : str, agent: Agent) -> str:
     '''

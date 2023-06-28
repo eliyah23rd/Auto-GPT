@@ -14,7 +14,7 @@ from autogpt.logs import logger
 from autogpt.ai_guidelines import AIGuidelines
 from autogpt.llm.utils import create_chat_completion
 from autogpt.llm.base import ChatSequence, Message
-from .agdai_mem import ClPAIMem, ClPAIVals
+from .pai_mem import ClPAIMem, ClPAIVals
 from .telegram_chat import TelegramUtils
 class ClPAIData(AbstractSingleton):
     def __init__(self, config : Config = None, ai_config = None) -> None:
