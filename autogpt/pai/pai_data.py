@@ -53,6 +53,8 @@ class ClPAIData(AbstractSingleton):
         self._bintervene = False # When switched to True by the /intervene command, allows user to replace GPT response
         self._b_last_fixed = True # If there is not an uninterrupted sequence of fixed, new fixes are not allowed
         self._b_action_response = False # must be set to True before any calls to modules that are making mainstream calls to the LLM and reset afterwards
+        self._paused = False # made true either at user request or if a violation occurs, until user can pay attention 
+        self._bviolation = False # can only be reset by user, if timed out program ends
         self.init_bot()
         self.msg_user('System initialized')
 
@@ -394,7 +396,7 @@ I must make sure I use the json format specified above for my response.
         Stores a pointer from the context to the advice as well as from the advice
             to the score and the advice source
         '''
-        advice_memid, _ = self._advice.add(advice)
+        advice_memid, _ = self._advice.add(advice, self._config)
         last_context_memid = self._contexts.get_last_memid()
         self._advice_refs.add((last_context_memid, advice_memid))
         self._advice_scores.add((advice_memid, 0)) # NB 0 and not None for advice score
@@ -427,21 +429,20 @@ I must make sure I use the json format specified above for my response.
         self.msg_user(msg)
 
     def process_msgs(self, messages : list[dict[str, str]]):
-        # new_messages = [msg for msg in messages if msg not in self._full_message_history]
-        # look for "Error:"" in last msg
         bviolation, violation_alert = self._guidelines_mgr.exec_monitor(self._config, messages)
         if bviolation:
             self.apply_scores(0, 10, -10, b_force_score=True)
             # In the future we will investigate more carefully
             self.msg_user(f'Guideline violation alert! Shutting down! Report: {violation_alert}')
             # raise ValueError('Guideline violation!') TBD!!! Don't forget to bring this back
+            self._bviolation = True
+            self._paused = True
 
         if len(messages) > 2 and 'Error:' in messages[-3]['content']:
             self.apply_scores(0, 1, -7)
         context_as_str = '\n'.join([f'{key} {value}' for message_dict in messages \
                                     for key, value in message_dict.items()])
         _, context_embedding = self._contexts.add(context_as_str, self._config)
-        bpaused = False
         while True:
             user_message = self._telegram_utils.check_for_user_input()
             if len(user_message) > 0:
@@ -457,9 +458,9 @@ I must make sure I use the json format specified above for my response.
                 elif msg_type == self.UserCmd.eFlow:
                     self._bintervene = False
                 elif msg_type == self.UserCmd.ePause:
-                    bpaused = True
+                    self._paused = True
                 elif msg_type == self.UserCmd.eContinueAfterPause:
-                    bpaused = False
+                    self._paused = False
                 elif msg_type == self.UserCmd.eAdvice:
                     self.store_advice(content, 'user')
                     return f'Your user has requested that you use the following advice in deciding on your future responses: {content}'
@@ -467,8 +468,9 @@ I must make sure I use the json format specified above for my response.
                     return f'Your user has sent you the following message: {content}\n'\
                         'Use the command "telegram_message_user" from the COMMANDS list if you wish to reply.\n'\
                         'Ensure your response uses the JSON format specified above.'
-            if not bpaused:
+            if not self._paused:
                 break
+            print('Sleeping because in pause...')
             time.sleep(2)
                 
         ret_text = ''
@@ -482,10 +484,11 @@ I must make sure I use the json format specified above for my response.
         self._b_action_response = True
         return ret_text
 
-
-
     def msg_user(self, message):
         return self._telegram_utils.send_message(message)
 
     def check_for_user_message(self):
         return self._telegram_utils.check_for_user_input()
+    
+    def ask_gpt(self, prompt: str, memslot: str):
+        pass

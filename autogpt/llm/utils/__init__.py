@@ -95,6 +95,7 @@ def create_chat_completion(
     prompt: ChatSequence,
     config: Config,
     functions: Optional[List[OpenAIFunctionSpec]] = None,
+    force_function: Optional[str] = None,
     model: Optional[str] = None,
     temperature: Optional[float] = None,
     max_tokens: Optional[int] = None,
@@ -147,6 +148,8 @@ def create_chat_completion(
             function.__dict__ for function in functions
         ]
         logger.debug(f"Function dicts: {chat_completion_kwargs['functions']}")
+    if force_function:
+        chat_completion_kwargs["function_call"] = force_function
 
     response = iopenai.create_chat_completion(
         messages=prompt.raw(),

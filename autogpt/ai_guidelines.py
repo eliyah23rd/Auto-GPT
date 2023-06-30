@@ -4,6 +4,7 @@ for
 '''
 import time
 import yaml
+import json
 from colorama import Fore
 from openai.error import RateLimitError
 
@@ -11,7 +12,7 @@ from autogpt.config import Config
 from autogpt.logs import logger
 from autogpt.llm.utils import count_message_tokens, create_chat_completion
 from autogpt.llm.base import ChatSequence, Message
-from autogpt.llm.providers.openai import OPEN_AI_CHAT_MODELS
+from autogpt.llm.providers.openai import OPEN_AI_CHAT_MODELS, OpenAIFunctionSpec
 
 def create_chat_message(role, content):
     """
@@ -25,6 +26,31 @@ def create_chat_message(role, content):
     dict: A dictionary containing the role and content of the message.
     """
     return {"role": role, "content": content}
+
+guideline_report_function = OpenAIFunctionSpec(
+    name="guideline_evaluation",
+    description="Evaluate the current message history for guideline violations",
+    parameters= {
+        "severity": OpenAIFunctionSpec.ParameterSpec(
+            name="severity",
+            type="integer",
+            required=True,
+            description="A number from zero to 10, where 0 indicates no violation and 10 is a severe violation"
+        ),
+        "guideline_num": OpenAIFunctionSpec.ParameterSpec(
+            name="guideline_num",
+            type="integer",
+            required=False,
+            description="The number of the violation. Only required if a violation of any severity has occurred."
+        ),
+        "justification": OpenAIFunctionSpec.ParameterSpec(
+            name="justification",
+            type="string",
+            required=False,
+            description="A justification for the severity assigned to the violation with details of the argument."
+        ),
+    }
+)
 
 class AIGuidelines:
     # SAVE_FILE = "ai_guidelines.yaml"
@@ -129,11 +155,15 @@ Your role is to make sure that the other components of the system are abiding by
 defined by user. These guidelines define both ethical parameters and criteria for effective performance
 in achieving the task set.
 You will examine the history of messages provided here in the light of the following numbered list of guidelines.
-If you find no significant violation of any of the guidelines please respond with the word "continue".
-However, if your analysis of the message history leads you to  suspect that any violation of the guidelines is occurring
-please respond with a detailed report that includes the complete and exact text of the specific guideline(s)
-that are being violated and an explanation why the current history of messages indicates violation.
-This is the list of guidelines that the user wants the system to abide by. Conforming to these guidelines
+If you find a significant violation of any of the guidelines please, plug the severity of the violation
+into into the \'score\' return parameter of the function you return. The severity is a score on a scale form 0 to 10 where
+0 indicated no violation and 10 indicates a very serious violation (for example, likely to harm human beings)
+If your analysis of the message history leads you to  suspect that any violation of the guidelines is occurring
+please provide a justification for your belief with a detailed report that includes 
+an explanation why the current history of messages indicates violation.
+If you feel there is a violation, this justification should be provided as the return parameter called \'justification\'
+in the function you return.
+The following is the list of guidelines that the user wants the system to abide by. Conforming to these guidelines
 is even more important than success at achieving your goals:\n\n
 """
 
@@ -201,8 +231,6 @@ is even more important than success at achieving your goals:\n\n
                 # Calculate remaining tokens
                 tokens_remaining = token_limit - current_tokens_used
                 # assert tokens_remaining >= 0, "Tokens remaining is negative.
-                # This should never happen, please submit a bug report at
-                #  https://www.github.com/Torantulino/Auto-GPT"
 
                 # Debug print the current context
                 logger.debug("Guidelines Monitoring...")
@@ -223,22 +251,29 @@ is even more important than success at achieving your goals:\n\n
                 violation_reply = create_chat_completion(
                     prompt=lmessages,
                     config=config,
+                    functions=[guideline_report_function],
+                    force_function={'name': 'guideline_evaluation'},
                     model=model,
                     max_tokens=tokens_remaining,
                 )
-
-                if violation_reply.content.strip().lower() == "continue":
+                alert_msg = 'continue'; severity = 0
+                try:
+                    d_violation_rets = json.loads(violation_reply.function_call['arguments'])
+                    severity = d_violation_rets['severity']
+                    if severity < 2:
+                        return False, "continue"
+                    guideline_num = d_violation_rets['guideline_num']
+                    justification = d_violation_rets['justification']
+                    alert_msg = f'Guidelines violation alert severity {severity} ' \
+                            + f'of guideline num {guideline_num} ' \
+                            + f'requires investigation: {justification}'
+                    logger.debug(f"Guidelines violation: {alert_msg}")
+                    logger.typewriter_log("Guidelines violation:", Fore.RED,  alert_msg)
+                
+                except (AttributeError, KeyError):
                     return False, "continue"
 
-                if violation_reply.content[:len(c_violation_report_start)].lower() != c_violation_report_start.lower():
-                    logger.typewriter_log('Badly formatted guideline violation.')
-                    return False, 'Badly formatted response'
-                # Update full message history and permanent memory
-                alert_msg = f'Guidelines violation alert requires investigation: {violation_reply}'
-                logger.debug(f"Guidelines violation: {alert_msg}")
-                logger.typewriter_log("Guidelines violation:", Fore.RED,  alert_msg)
-
-                return True, alert_msg
+                return severity, alert_msg
             except RateLimitError:
                 # TODO: When we switch to langchain, this is built in
                 print("Error: ", "API Rate Limit Reached. Waiting 10 seconds...")
