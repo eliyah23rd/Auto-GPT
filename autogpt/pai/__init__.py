@@ -4,7 +4,7 @@ from typing import Any, Dict, List, Optional, Tuple, TypedDict, TypeVar
 from auto_gpt_plugin_template import AutoGPTPluginTemplate
 from autogpt.models.command import Command
 from autogpt.models.command_parameter import CommandParameter
-from .pai import _pai_find_similar, _pai_msg_user
+from .pai import _pai_find_similar, _pai_msg_user, _pai_ask_gpt
 from .pai_data import ClPAIData
 
 PromptGenerator = TypeVar("PromptGenerator")
@@ -209,11 +209,27 @@ class ClPAI(AutoGPTPluginTemplate):
         """
 
         self._data.set_agent_name(prompt.name)
-        cmds = [Command('telegram_message_user',
-            'Message user',
-            _pai_msg_user,
-            [CommandParameter("message", "string", description="message_to_send", required=True)]
-        )]
+        cmds = [
+            Command(
+                'telegram_message_user',
+                'Message user',
+                _pai_msg_user,
+                [CommandParameter("message", "string", description="message_to_send", required=True)]
+            ),
+            Command(
+                'ask_gpt',
+                'Send a question back to GPT. Formulate the request as prompt that is well designed and'
+                '\nlikely to evoke the correct answer from GPT. Choose a name '
+                '\nfor a memory slot to which the answer can be assigned for future reference.',
+                _pai_msg_user,
+                [
+                    CommandParameter("question", "string", description="question to ask GPT", required=True),
+                    CommandParameter("memory_slot_name", "string", description="A name for a memory slot to which the answer will be assigned", required=True),
+                ]
+            ),
+        ]
+        # Please also provide the name for a memory slot to which your"    "\nanswer can be assigned for future memory reference."
+        # "Create a prompt for a question to ask the GPT engine "and provide the name of a memory slot to assign the answer to"
         self._data.register_cmds(cmds)
         prompt.add_command(
             "find_similar",
@@ -221,6 +237,7 @@ class ClPAI(AutoGPTPluginTemplate):
             {"memory": "<memory_like_this>"},
             _pai_find_similar,
         )
+
         prompt.add_command(
             'telegram_message_user',
             'Message user',

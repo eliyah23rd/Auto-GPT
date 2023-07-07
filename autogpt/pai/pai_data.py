@@ -14,8 +14,10 @@ from autogpt.logs import logger
 from autogpt.ai_guidelines import AIGuidelines
 from autogpt.llm.utils import create_chat_completion
 from autogpt.llm.base import ChatSequence, Message
+from autogpt.llm.providers.openai import OPEN_AI_CHAT_MODELS, OpenAIFunctionSpec
 from .pai_mem import ClPAIMem, ClPAIVals
 from .telegram_chat import TelegramUtils
+
 class ClPAIData(AbstractSingleton):
     def __init__(self, config : Config = None, ai_config = None) -> None:
         super().__init__()
@@ -55,6 +57,7 @@ class ClPAIData(AbstractSingleton):
         self._b_action_response = False # must be set to True before any calls to modules that are making mainstream calls to the LLM and reset afterwards
         self._paused = False # made true either at user request or if a violation occurs, until user can pay attention 
         self._bviolation = False # can only be reset by user, if timed out program ends
+        self._slots_memory = {} # dict containing memory slots filled by memory model answers and function returns
         self.init_bot()
         self.msg_user('System initialized')
 
@@ -490,5 +493,55 @@ I must make sure I use the json format specified above for my response.
     def check_for_user_message(self):
         return self._telegram_utils.check_for_user_input()
     
-    def ask_gpt(self, prompt: str, memslot: str):
-        pass
+    def ask_gpt(self, question: str, memslot: str):
+        if model is None:
+            model = self._config.smart_llm_model
+
+        ask_gpt_function = OpenAIFunctionSpec(
+            name="ask_gpt_function",
+            description="Consider user's question, provide the reasoning for your answer stage by stage and then answer the question.",
+            parameters= {
+                "reasoning": OpenAIFunctionSpec.ParameterSpec(
+                    name="reasoning",
+                    type="string",
+                    required=True,
+                    description="A stage by stage description of the reasoning behind why you chose to answer the way you did."
+                ),
+                "answer": OpenAIFunctionSpec.ParameterSpec(
+                    name="answer",
+                    type="string",
+                    required=True,
+                    description="The answer to the user\'s question."
+                ),
+            }
+        )
+        prompt = ChatSequence.for_model(
+            model,
+            [
+                Message(
+                    "system",
+                    "You are a helpful assistant whose purpose is to answer the user\'s question."
+                    "\nPlease answer using the provided function by detailing and your reasoning in the "
+                    "\n\'reasoning\' return value, the body of your answer in the \'answer\'"
+                    "\nreturn parameter. "
+                ),
+                Message("user", question),
+            ],
+        )
+        reply = create_chat_completion(
+            prompt=prompt,
+            functions=[ask_gpt_function],
+            force_function={'name': 'ask_gpt_function'},
+            temperature=0.4,
+            config=self._config,
+            model=model)
+        try:
+            function_rets = json.loads(reply.function_call['arguments'])
+            reasoning = function_rets['reasoning']
+            answer = function_rets['answer']
+            self._slots_memory[memslot] = answer
+            return f"GPT answered the question using the following reasoning: \n{reasoning}"\
+                    f"\nThe final answer was: \n{answer}"
+
+        except (AttributeError, KeyError):
+            return "GPT failed to answer the question using the correct format."

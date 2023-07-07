@@ -7,12 +7,16 @@ import yaml
 import json
 from colorama import Fore
 from openai.error import RateLimitError
+from prompt_toolkit import ANSI, PromptSession
+from prompt_toolkit.history import InMemoryHistory
 
 from autogpt.config import Config
 from autogpt.logs import logger
 from autogpt.llm.utils import count_message_tokens, create_chat_completion
 from autogpt.llm.base import ChatSequence, Message
 from autogpt.llm.providers.openai import OPEN_AI_CHAT_MODELS, OpenAIFunctionSpec
+
+terminal_session = PromptSession(history=InMemoryHistory())
 
 def create_chat_message(role, content):
     """
@@ -84,25 +88,27 @@ class AIGuidelines:
         print('The following are your current guidelines:')
         for irule, rule in enumerate(self.ai_guidelines):
             logger.typewriter_log(f'{irule+1}:', Fore.LIGHTCYAN_EX,  rule)
-        should_change = input('Would you like to change any of these guidelines or add some of your own? (y/n): ')
+        # should_change = input('Would you like to change any of these guidelines or add some of your own? (y/n): ')
+        prompt = 'Would you like to change any of these guidelines or add some of your own? (y/n): '
+        should_change = terminal_session.prompt(ANSI(prompt))
         if should_change[0].lower() != 'y':
             return
         while True:
             num_rules = len(self.ai_guidelines)
             if num_rules == 0:
                 while True:
-                    new_rule = input('Please enter your new guideline rule:\n')
+                    new_rule = terminal_session.prompt(ANSI('Please enter your new guideline rule:\n'))
                     if len(new_rule) > 0:
                         self.ai_guidelines.append(new_rule)
                         num_rules += 1
                         print('Done. If you want to change what you\'ve entered so far, you\'ll get another chance in a moment.')
-                        keep_going = input('Do you want to enter another guideline? (y/n): ')
+                        keep_going = terminal_session.prompt(ANSI('Do you want to enter another guideline? (y/n): '))
                         if keep_going[0].lower() != 'y':
                             break
                     else:
                         break
                 if num_rules == 0:
-                    keep_going = input('Please confirm that you want to have no guidelines. (c)')
+                    keep_going = terminal_session.prompt(ANSI('Please confirm that you want to have no guidelines. (c)'))
                     if keep_going[0].lower() == 'c':
                         break
                 else:
@@ -115,12 +121,12 @@ class AIGuidelines:
                 irule += 1
                 logger.typewriter_log(f'Editing current rule # {irule}:', Fore.LIGHTCYAN_EX, rule)
                 print('Please select one of the following options by typing just one letter:')
-                user_choice = input('(r)eplace, (i)nsert after, (k)eep, (d)elete, (e)exit guideline editing: ')
+                user_choice = terminal_session.prompt(ANSI('(r)eplace, (i)nsert after, (k)eep, (d)elete, (e)exit guideline editing: '))
                 if user_choice[0].lower() == 'r':
-                    new_rule = input('Please enter your new guideline rule:\n')
+                    new_rule = terminal_session.prompt(ANSI('Please enter your new guideline rule:\n'))
                     self.ai_guidelines[irule-1] = new_rule
                 elif user_choice[0].lower() == 'i':
-                    new_rule = input('Please enter your new guideline rule:\n')
+                    new_rule = terminal_session.prompt(ANSI('Please enter your new guideline rule:\n'))
                     self.ai_guidelines.insert(irule, new_rule)
                     num_rules += 1
                     irule += 1
@@ -137,7 +143,7 @@ class AIGuidelines:
             if b_get_out:
                 break
 
-            keep_going = input('Are you done editing the guidelines? (y/n): ')
+            keep_going = terminal_session.prompt(ANSI('Are you done editing the guidelines? (y/n): '))
             if keep_going[0].lower() != 'n':
                 break
 
