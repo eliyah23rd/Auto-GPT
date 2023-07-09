@@ -189,7 +189,7 @@ is even more important than success at achieving your goals:\n\n
 
         # config = Config()
         if model is None:
-            model = config.fast_llm_model
+            model = config.fast_llm
         token_limit = OPEN_AI_CHAT_MODELS.get(model).max_tokens
         while True:
             try:
@@ -227,13 +227,13 @@ is even more important than success at achieving your goals:\n\n
                     model_message = Message(message['role'], message['content'])
                     current_tokens_used += count_message_tokens([model_message], model)
                     lmessages.append(model_message)
-                c_violation_report_start = 'Guidelines Violation'
-                prompt_msg = Message('user', 'Please do nothing other than check this history '\
-                        'for guideline violations. If there are violations, start your response '\
-                        f'with the words \"{c_violation_report_start}\" '\
-                        'and if no violations are found, respond with the single word "continue".')
-                current_tokens_used += count_message_tokens([prompt_msg], model)
-                lmessages.append(prompt_msg)
+                # c_violation_report_start = 'Guidelines Violation'
+                # prompt_msg = Message('user', 'Please do nothing other than check this history '\
+                #         'for guideline violations. If there are violations, start your response '\
+                #         f'with the words \"{c_violation_report_start}\" '\
+                #         'and if no violations are found, respond with the single word "continue".')
+                # current_tokens_used += count_message_tokens([prompt_msg], model)
+                # lmessages.append(prompt_msg)
                 # Calculate remaining tokens
                 tokens_remaining = token_limit - current_tokens_used
                 # assert tokens_remaining >= 0, "Tokens remaining is negative.

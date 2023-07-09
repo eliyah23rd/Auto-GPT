@@ -1,9 +1,11 @@
 """ Autonamous Guidelines Driven AI """
 from typing import Any, Dict, List, Optional, Tuple, TypedDict, TypeVar
 
+from openai.openai_object import OpenAIObject
 from auto_gpt_plugin_template import AutoGPTPluginTemplate
 from autogpt.models.command import Command
 from autogpt.models.command_parameter import CommandParameter
+from autogpt.llm.providers.openai import OpenAIFunctionCall
 from .pai import _pai_find_similar, _pai_msg_user, _pai_ask_gpt
 from .pai_data import ClPAIData
 
@@ -31,11 +33,11 @@ class ClPAI(AutoGPTPluginTemplate):
             bool: True if the plugin can handle the on_response method."""
         return True
 
-    def on_response(self, response: str, *args, **kwargs) -> str:
+    def on_response(self, content: str, function: OpenAIObject, *args, **kwargs) -> tuple[str, OpenAIFunctionCall]:
         """This method is called when a response is received from the model.
         This is called for any call to GPT not only the chat_with_ai() in the main
         loop start_interaction_loop()"""
-        return self._data.process_actions(response)
+        return self._data.process_actions(content, function)
 
 
     def can_handle_post_prompt(self) -> bool:

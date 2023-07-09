@@ -6,15 +6,16 @@ import difflib
 import random
 import json
 from enum import Enum
-from colorama import Fore # , Style
-# from typing import List #, Any, Dict, Optional, TypedDict, TypeVar, Tuple
+# from typing import Tuple # List #, Any, Dict, Optional, TypedDict, TypeVar, Tuple
+# from colorama import Fore # , Style
+from openai.openai_object import OpenAIObject
 from autogpt.singleton import AbstractSingleton
 from autogpt.config import Config, AIConfig
 from autogpt.logs import logger
 from autogpt.ai_guidelines import AIGuidelines
 from autogpt.llm.utils import create_chat_completion
 from autogpt.llm.base import ChatSequence, Message
-from autogpt.llm.providers.openai import OPEN_AI_CHAT_MODELS, OpenAIFunctionSpec
+from autogpt.llm.providers.openai import OPEN_AI_CHAT_MODELS, OpenAIFunctionSpec, OpenAIFunctionCall
 from .pai_mem import ClPAIMem, ClPAIVals
 from .telegram_chat import TelegramUtils
 
@@ -161,7 +162,7 @@ class ClPAIData(AbstractSingleton):
                 f'previous context:\n{top_str}'
         # cfg = Config()
         diff_messages = ChatSequence.for_model(
-            self._config.fast_llm_model,
+            self._config.fast_llm,
             [
                 Message(
                     "system",
@@ -176,7 +177,7 @@ class ClPAIData(AbstractSingleton):
         diff_response = create_chat_completion(
             prompt=diff_messages,
             config=self._config,
-            model=self._config.fast_llm_model,
+            model=self._config.fast_llm,
         )
         
         return '. However these are the differences between the current context '\
@@ -326,7 +327,7 @@ I must make sure I use the json format specified above for my response.
 
         
 
-    def process_actions(self, gpt_response_json : str) -> str:
+    def process_actions(self, gpt_response_json : str, function : OpenAIObject) -> tuple[str, OpenAIFunctionCall]:
         '''
         If we are not in the intervene state do nothing other than store the GPT response
         Future versions may compare with guidelines or apply some other processing.
@@ -339,14 +340,14 @@ I must make sure I use the json format specified above for my response.
         # before anything else, make sure that this is called by an on_respose from a 
         #   mainstream LLM call (not a guidelines or summary call)
         if not self._b_action_response:
-            return gpt_response_json
+            return gpt_response_json, function
         
         self._b_action_response = False
         baccept = True
         if self._bintervene:
             baccept = False
             self.msg_user('LLM made the following response:')
-            self.msg_user(gpt_response_json)
+            self.msg_user(gpt_response_json) msg the user the action too
             self.msg_user('Please type \'y\' if you want to accept this or \'n\' to change it')
             while True:
                 y_or_n_str = self._telegram_utils.check_for_user_input(bblock=True)
@@ -358,12 +359,14 @@ I must make sure I use the json format specified above for my response.
                 else:
                     self.msg_user('I\'m sorry, please type \'y\' if you want to accept this or \'n\' to change it')
             if not baccept:
-                json_str = '{"thoughts": {"text": "", "reasoning": "", "plan": "", "criticism": "", "speak": ""}, ' \
-                        + '"command": {"name": "' # cmd_str", "args": {"filename": "sample.txt"}}}'
+                # json_str = '{"thoughts": {"text": "", "reasoning": "", "plan": "", "criticism": "", "speak": ""}, ' \
+                #         + '"command": {"name": "' # cmd_str", "args": {"filename": "sample.txt"}}}'
                 self.msg_user('Please enter the command name.')
                 cmd_str = self._telegram_utils.check_for_user_input(bblock=True)
-                json_str += cmd_str.strip() + '", "args": {"'
+                cmd_name = cmd_str.strip()
+                # json_str += cmd_str.strip() + '", "args": {"'
                 b_first_arg = True
+                json_str = '{\n  "'
                 while True:
                     self.msg_user('Please enter the name of the next argument or type \'end\' if there are no more arguments.')
                     arg_name = self._telegram_utils.check_for_user_input(bblock=True)
@@ -372,24 +375,27 @@ I must make sure I use the json format specified above for my response.
                     if b_first_arg:
                         b_first_arg = False
                     else:
-                        json_str += ', '
+                        json_str += ',\n  "'
                     arg_name = arg_name.strip()
                     json_str += arg_name + '": "'
                     self.msg_user(f'Please enter the value for arg \'{arg_name}\'.')
                     arg_val = self._telegram_utils.check_for_user_input(bblock=True)
                     json_str += arg_val.strip() + '"'
-                json_str += '}}}'
-                gpt_response_json = json_str.replace('\n', '\\n')
+                json_str += '\n}'
+                # gpt_response_json = json_str.replace('\n', '\\n')
                 # gpt_response = json.loads(gpt_response_json)
+                function = OpenAIFunctionCall(name=cmd_name, arguments=json_str)
                 baccept = True
 
         if baccept:
-            last_action_memid, _ = self._actions.add(gpt_response_json, self._config)
+            if function is not None:
+                function_str = json.dumps({'name':function.name, 'arguments':function.arguments})
+            last_action_memid, _ = self._actions.add(function_str, self._config)
             last_context_memid = self._contexts.get_last_memid()
             self._response_refs.add((last_context_memid, last_action_memid))
             self._action_scores.add((last_action_memid, None)) # NB None and not zero for action score
             self._b_last_fixed = False
-            return gpt_response_json
+            return gpt_response_json, function
         
         assert False, 'logic should not reach here'
     
@@ -495,7 +501,7 @@ I must make sure I use the json format specified above for my response.
     
     def ask_gpt(self, question: str, memslot: str):
         if model is None:
-            model = self._config.smart_llm_model
+            model = self._config.smart_llm
 
         ask_gpt_function = OpenAIFunctionSpec(
             name="ask_gpt_function",

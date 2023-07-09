@@ -167,7 +167,7 @@ def create_chat_completion(
     for plugin in config.plugins:
         if not plugin.can_handle_on_response():
             continue
-        content = plugin.on_response(content)
+        content, function_call = plugin.on_response(content, function_call)
 
     return ChatModelResponse(
         model_info=OPEN_AI_CHAT_MODELS[model],
