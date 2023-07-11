@@ -4,6 +4,10 @@ You agent is controlled by Telegram, please check out env.template for details o
 
 The concept is described on Reddit at https://www.reddit.com/r/ExploringGPT/comments/13uxz0s/the_quest_for_personal_ai_an_autonomous_gpt_agent/
 
+Further posts:
+
+https://www.reddit.com/r/ExploringGPT/comments/14wokcf/quick_update_on_the_personal_ai_project/
+
 # Auto-GPT: An Autonomous GPT-4 Experiment
 [![Official Website](https://img.shields.io/badge/Official%20Website-agpt.co-blue?style=flat&logo=world&logoColor=white)](https://agpt.co)
 [![Unit Tests](https://img.shields.io/github/actions/workflow/status/Significant-Gravitas/Auto-GPT/ci.yml?label=unit%20tests)](https://github.com/Significant-Gravitas/Auto-GPT/actions/workflows/ci.yml)
