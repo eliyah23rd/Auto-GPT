@@ -18,6 +18,7 @@ logs
 mem.sqlite3
 autogpt/agdai/*.json
 autogpt/pai/*.json
+autogpt/pai/memstore/*.json
 venvAutoGPT
 
 # Byte-compiled / optimized / DLL files
