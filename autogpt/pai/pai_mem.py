@@ -52,7 +52,7 @@ class ClPAIStorage:
     def __init__(self, utc_start, memtype, filename_body) -> None:
         self._utc_start = str(utc_start)
         curr_dir = Path(__file__).parent
-        self.filename = curr_dir / f'{filename_body}.json'
+        self.filename = curr_dir / 'memstore' / f'{filename_body}.json'
 
         self.filename.touch(exist_ok=True)
 

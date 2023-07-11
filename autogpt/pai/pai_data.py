@@ -4,6 +4,7 @@ import time
 import re
 import difflib
 import random
+from pathlib import Path
 import json
 from enum import Enum
 # from typing import Tuple # List #, Any, Dict, Optional, TypedDict, TypeVar, Tuple
@@ -18,6 +19,19 @@ from autogpt.llm.base import ChatSequence, Message
 from autogpt.llm.providers.openai import OPEN_AI_CHAT_MODELS, OpenAIFunctionSpec, OpenAIFunctionCall
 from .pai_mem import ClPAIMem, ClPAIVals
 from .telegram_chat import TelegramUtils
+
+def replace_curly_braces(string, dictionary):
+    start = string.find('{')
+    end = string.find('}')
+    while start != -1 and end != -1:
+        key = string[start+1:end]
+        if key in dictionary:
+            string = string[:start] + str(dictionary[key]) + string[end+1:]
+        else:
+            string = string[:start] + string[start+1:end] + string[end+1:]
+        start = string.find('{')
+        end = string.find('}')
+    return string
 
 class ClPAIData(AbstractSingleton):
     def __init__(self, config : Config = None, ai_config = None) -> None:
@@ -51,19 +65,65 @@ class ClPAIData(AbstractSingleton):
                     ('unpause', 'unpaused agent after pause, resumes the interaction with underlying GPT engine'),
                     ('intervene', 'after an action is selected by GPT check if user wants to override. Maintains this state till flow command'),
                     ('flow', 'if in intervene state, returns to GPT selected action'),
+                    ('fix', 'run task in fix mode, all commands are fixed until the first that the user did not define'),
                     ('ask', 'asks the agent a question'),
                     ])
         self._bintervene = False # When switched to True by the /intervene command, allows user to replace GPT response
+        self._bfixed = False # When switched to True by the /fix command or from history, commands are chosen by history, or by intervention until the first non-intervened command
         self._b_last_fixed = True # If there is not an uninterrupted sequence of fixed, new fixes are not allowed
         self._b_action_response = False # must be set to True before any calls to modules that are making mainstream calls to the LLM and reset afterwards
         self._paused = False # made true either at user request or if a violation occurs, until user can pay attention 
         self._bviolation = False # can only be reset by user, if timed out program ends
         self._slots_memory = {} # dict containing memory slots filled by memory model answers and function returns
+        self._last_command_response = ''
+        self._d_fix = {}
+        self._curr_fix = []
+        self._curr_fix_idx = 0
         self.init_bot()
         self.msg_user('System initialized')
 
+    def fix_history_init(self):
+        curr_dir = Path(__file__).parent
+        filename = curr_dir / 'fix.json'
+        try:
+            with open(filename, 'r', encoding="utf-8") as fh:
+                file_contents = fh.read()
+                self._d_fix = json.loads(file_contents)
+                if self._curr_agent_name in self._d_fix:
+                    self._curr_fix = self._d_fix[self._curr_agent_name]
+                else:
+                    self._curr_fix = []
+                    self._d_fix[self._curr_agent_name] = self._curr_fix
+        except FileNotFoundError:
+            self._d_fix = {}
+            self._curr_fix = []
+            self._d_fix[self._curr_agent_name] = self._curr_fix
+            with open(filename, 'w', encoding="utf-8") as fh:
+                fix_str = json.dumps(self._d_fix)
+                fh.write(fix_str)
+        if len(self._curr_fix) > 0:
+            self._bfixed = True
+        self._curr_fix_idx = 0
+
+    def fix_add_cmd(self, cmd, args):
+        self._curr_fix.append([cmd, args])
+        curr_dir = Path(__file__).parent
+        filename = curr_dir / 'fix.json'
+        with open(filename, 'w', encoding="utf-8") as fh:
+            fix_str = json.dumps(self._d_fix)
+            fh.write(fix_str)
+        self._curr_fix_idx += 1
+
+    def fix_get_cmd(self):
+        if self._curr_fix_idx < len(self._curr_fix):
+            self._curr_fix_idx += 1
+            return self._curr_fix[self._curr_fix_idx - 1]
+        return None, None
+
+
     def set_agent_name(self, agent_name : str):
         self._curr_agent_name = agent_name
+        self.fix_history_init()
         # self.add_mem(f'new agent: {agent_name}', [], 0)
 
     def init_bot(self):
@@ -84,6 +144,7 @@ class ClPAIData(AbstractSingleton):
         eContinueAfterPause     = 7
         eIntervene              = 8
         eFlow                   = 9
+        eFix                    = 10
 
     def parse_user_msg(self, user_str):
         pattern = r"^/score_?1?\s+(-?\d+)"
@@ -125,6 +186,10 @@ class ClPAIData(AbstractSingleton):
         match = re.search(pattern, user_str, re.IGNORECASE)
         if match:
             return self.UserCmd.eFlow, ''
+        pattern = r"/fix\s*$"
+        match = re.search(pattern, user_str, re.IGNORECASE)
+        if match:
+            return self.UserCmd.eFix, ''
         return self.UserCmd.eFreeForm, user_str
 
     c_mem_tightness = 0.1 # TBD Make configurable
@@ -341,13 +406,27 @@ I must make sure I use the json format specified above for my response.
         #   mainstream LLM call (not a guidelines or summary call)
         if not self._b_action_response:
             return gpt_response_json, function
-        
+
         self._b_action_response = False
         baccept = True
-        if self._bintervene:
+        b_function_from_fix_history = False
+
+        if self._bfixed:
+            cmd_name, json_str = self.fix_get_cmd()
+            if cmd_name is None:
+                if not self._bintervene:
+                    self._bfixed = False
+            else:
+                function = OpenAIFunctionCall(name=cmd_name, arguments=json_str)
+                b_function_from_fix_history = True
+
+
+        if self._bintervene and not b_function_from_fix_history:
             baccept = False
-            self.msg_user('LLM made the following response:')
-            self.msg_user(gpt_response_json) msg the user the action too
+            self.msg_user('LLM produced the following thinking:')
+            self.msg_user(gpt_response_json)
+            self.msg_user('LLM proposed the following action:')
+            self.msg_user(f'function: {function.name}. arguments: {function.arguments}')
             self.msg_user('Please type \'y\' if you want to accept this or \'n\' to change it')
             while True:
                 y_or_n_str = self._telegram_utils.check_for_user_input(bblock=True)
@@ -386,6 +465,8 @@ I must make sure I use the json format specified above for my response.
                 # gpt_response = json.loads(gpt_response_json)
                 function = OpenAIFunctionCall(name=cmd_name, arguments=json_str)
                 baccept = True
+            if self._bfixed:
+                self.fix_add_cmd(function.name, function.arguments)
 
         if baccept:
             if function is not None:
@@ -398,6 +479,9 @@ I must make sure I use the json format specified above for my response.
             return gpt_response_json, function
         
         assert False, 'logic should not reach here'
+
+    def store_last_command_response(self, response):
+        self._last_command_response = response
     
     def store_advice(self, advice : str, source : str) -> None:
         '''
@@ -466,6 +550,10 @@ I must make sure I use the json format specified above for my response.
                     self._bintervene = True
                 elif msg_type == self.UserCmd.eFlow:
                     self._bintervene = False
+                    self._bfixed = False
+                elif msg_type == self.UserCmd.eFix:
+                    self._bintervene = True
+                    self._bfixed = True
                 elif msg_type == self.UserCmd.ePause:
                     self._paused = True
                 elif msg_type == self.UserCmd.eContinueAfterPause:
@@ -500,8 +588,8 @@ I must make sure I use the json format specified above for my response.
         return self._telegram_utils.check_for_user_input()
     
     def ask_gpt(self, question: str, memslot: str):
-        if model is None:
-            model = self._config.smart_llm
+        question = replace_curly_braces(question, self._slots_memory)
+        model = self._config.smart_llm
 
         ask_gpt_function = OpenAIFunctionSpec(
             name="ask_gpt_function",
@@ -528,8 +616,10 @@ I must make sure I use the json format specified above for my response.
                     "system",
                     "You are a helpful assistant whose purpose is to answer the user\'s question."
                     "\nPlease answer using the provided function by detailing and your reasoning in the "
-                    "\n\'reasoning\' return value, the body of your answer in the \'answer\'"
+                    "\n\'reasoning\' return value, and place the body of your answer in the \'answer\'"
                     "\nreturn parameter. "
+                    "\nPlease write a complete answer that can be used standalone in the 'answer' field of the function provided. "
+                    "\nDo not leave the 'answer' field empty, a complete answer is required.",
                 ),
                 Message("user", question),
             ],
@@ -551,3 +641,8 @@ I must make sure I use the json format specified above for my response.
 
         except (AttributeError, KeyError):
             return "GPT failed to answer the question using the correct format."
+        
+    def store_memslot(self, memslot : str) -> str:
+        self._slots_memory[memslot] = self._last_command_response
+        return f'Command store_memslot successfully assigned to {memslot} the data {self._last_command_response}'
+       

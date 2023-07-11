@@ -6,7 +6,7 @@ from auto_gpt_plugin_template import AutoGPTPluginTemplate
 from autogpt.models.command import Command
 from autogpt.models.command_parameter import CommandParameter
 from autogpt.llm.providers.openai import OpenAIFunctionCall
-from .pai import _pai_find_similar, _pai_msg_user, _pai_ask_gpt
+from .pai import _pai_find_similar, _pai_msg_user, _pai_ask_gpt, _pai_store_memslot
 from .pai_data import ClPAIData
 
 PromptGenerator = TypeVar("PromptGenerator")
@@ -153,7 +153,7 @@ class ClPAI(AutoGPTPluginTemplate):
         handle the post_command method.
         Returns:
             bool: True if the plugin can handle the post_command method."""
-        return False
+        return True
 
     def post_command(self, command_name: str, response: str) -> str:
         """This method is called after the command is executed.
@@ -163,7 +163,8 @@ class ClPAI(AutoGPTPluginTemplate):
         Returns:
             str: The resulting response.
         """
-        pass
+        self._data.store_last_command_response(response)
+        return response
 
     def can_handle_chat_completion(
         self,
@@ -223,10 +224,18 @@ class ClPAI(AutoGPTPluginTemplate):
                 'Send a question back to GPT. Formulate the request as prompt that is well designed and'
                 '\nlikely to evoke the correct answer from GPT. Choose a name '
                 '\nfor a memory slot to which the answer can be assigned for future reference.',
-                _pai_msg_user,
+                _pai_ask_gpt,
                 [
-                    CommandParameter("question", "string", description="question to ask GPT", required=True),
-                    CommandParameter("memory_slot_name", "string", description="A name for a memory slot to which the answer will be assigned", required=True),
+                    CommandParameter("prompt", "string", description="question to ask GPT", required=True),
+                    CommandParameter("memslot", "string", description="A name for a memory slot to which the answer will be assigned", required=True),
+                ]
+            ),
+            Command(
+                'store_in_memslot',
+                'Store the result of the last command in a memory slot for future use',
+                _pai_store_memslot,
+                [
+                    CommandParameter("memslot", "string", description="A name for a memory slot to which the answer will be assigned", required=True),
                 ]
             ),
         ]

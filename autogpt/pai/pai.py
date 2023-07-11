@@ -18,3 +18,8 @@ def _pai_msg_user(message : str, agent: Agent) -> None:
 def _pai_ask_gpt(prompt : str, memslot : str, agent: Agent) -> None:
     pai_data = ClPAIData(config=agent.config, ai_config=agent.ai_config)
     return pai_data.ask_gpt(prompt, memslot)
+
+def _pai_store_memslot(memslot : str, agent: Agent) -> None:
+    pai_data = ClPAIData(config=agent.config, ai_config=agent.ai_config)
+    return pai_data.store_memslot(memslot)
+
