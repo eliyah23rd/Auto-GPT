@@ -141,7 +141,7 @@ class AIConfig:
         for plugin in config.plugins:
             if not plugin.can_handle_post_prompt():
                 continue
-            prompt_generator = plugin.post_prompt(prompt_generator)
+            prompt_generator = plugin.post_prompt(self, prompt_generator)
 
         if config.execute_local_commands:
             # add OS info to prompt

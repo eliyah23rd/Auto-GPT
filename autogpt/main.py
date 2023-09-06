@@ -22,7 +22,7 @@ from autogpt.utils import (
 )
 from autogpt.workspace import Workspace
 from scripts.install_plugin_deps import install_plugin_dependencies
-from autogpt.pai.__init__ import ClPAI
+# from autogpt.pai.__init__ import ClPAI
 # from autogpt.telegram_plugin.__init__ import AutoGPTTelegram
 
 COMMAND_CATEGORIES = [
@@ -174,7 +174,7 @@ def run_auto_gpt(
     # Initialize variables
     next_action_count = 0
 
-    config.plugins.append(ClPAI(config, ai_config))
+    # config.plugins.append(ClPAI(config, ai_config))
 
     # add chat plugins capable of report to logger
     if config.chat_messages_enabled:

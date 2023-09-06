@@ -248,7 +248,11 @@ def scan_plugins(config: Config, debug: bool = False) -> List[AutoGPTPluginTempl
                 hasattr(class_obj, "_abc_impl")
                 and AutoGPTPluginTemplate in class_obj.__bases__
             ):
-                loaded_plugins.append(class_obj())
+                local_config = plugins_config.get(plugin_module_name).config
+                if local_config is not None and 'config_req' in local_config and local_config['config_req']:
+                    loaded_plugins.append(class_obj(config))
+                else:
+                    loaded_plugins.append(class_obj())
 
     # Zip-based plugins
     for plugin in plugins_path.glob("*.zip"):

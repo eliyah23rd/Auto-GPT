@@ -184,8 +184,8 @@ is even more important than success at achieving your goals:\n\n
     def exec_monitor(self, config, context_messages : list[dict[str, str]], model: str | None = None):
         """Interact with the OpenAI API, sending the prompt, user input, message history,
         and permanent memory."""
-        if self.bsilent:
-            return 'continue'
+        # if self.bsilent:
+        #     return 'continue'
 
         # config = Config()
         if model is None:
