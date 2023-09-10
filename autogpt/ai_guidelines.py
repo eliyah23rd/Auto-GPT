@@ -184,8 +184,8 @@ is even more important than success at achieving your goals:\n\n
     def exec_monitor(self, config, context_messages : list[dict[str, str]], model: str | None = None):
         """Interact with the OpenAI API, sending the prompt, user input, message history,
         and permanent memory."""
-        # if self.bsilent:
-        #     return 'continue'
+        if self.bsilent:
+            return False, 'continue'
 
         # config = Config()
         if model is None:
@@ -279,7 +279,7 @@ is even more important than success at achieving your goals:\n\n
                 except (AttributeError, KeyError):
                     return False, "continue"
 
-                return severity, alert_msg
+                return True, alert_msg
             except RateLimitError:
                 # TODO: When we switch to langchain, this is built in
                 print("Error: ", "API Rate Limit Reached. Waiting 10 seconds...")
