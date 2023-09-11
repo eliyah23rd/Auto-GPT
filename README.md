@@ -2,6 +2,9 @@ This is a early version of a fork housing a plugin designed to let your Auto-GPT
 
 You agent is controlled by Telegram, please check out env.template for details on entering Telegram keys.
 
+Please add the following step to the setup instructions provided by Auto-GPT:
+copy plugins_config_template.yaml to plugins_config.yaml and put your Telegrap keys and chat id for your bot in there.
+
 The concept is described on Reddit at https://www.reddit.com/r/ExploringGPT/comments/13uxz0s/the_quest_for_personal_ai_an_autonomous_gpt_agent/
 
 Further posts:

@@ -1,0 +1,16 @@
+dospai:
+  config:
+    api_key: my-api-key
+    ################################################################################
+    ### TELEGRAM
+    ################################################################################
+    TELEGRAM_API_KEY: your-telegram-api-key
+    TELEGRAM_CHAT_ID: your-telegram-chat-id # User's ID not bot ID
+    TELEGRAM_GROUP_ID: your-telegram-group-id # optional
+    AI_GUIDELINES_FILE: "ai_guidelines.yaml"
+    config_req: true
+    silence_guidelines: true
+  enabled: true
+plugin_b:
+  config: {}
+  enabled: false
