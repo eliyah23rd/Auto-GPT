@@ -34,7 +34,8 @@ __pycache__/
 build/
 develop-eggs/
 dist/
-/plugins/
+/plugins/dospai/*.json
+# /plugins/
 plugins_config.yaml
 downloads/
 eggs/
